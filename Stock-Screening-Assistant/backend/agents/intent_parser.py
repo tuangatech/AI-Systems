@@ -227,38 +227,6 @@ QUERY_TO_INTENT = {
     }
 }
 
-# prompt = f"""
-#     You are a financial assistant. Parse the following stock screening query into structured JSON format.
-
-#     Return a JSON object with the following keys:
-#     intent, sector (optional), limit (optional), metrics, filters (optional), rank_by (optional)
-
-#     Rules:
-#     - "undervalued": peRatio, pbRatio, freeCashFlowYield
-#     - "safe", "stable": debtToEquity, revenueGrowth
-#     - "high dividend": dividendYield
-#     - Price thresholds (e.g., under $50): price_under
-#     - "top N stocks": limit=N
-#     - Default intent is "screen"
-#     - If no specific metric mentioned, use default relevant ones
-
-#     Example output:
-#     {{"intent": "screen", "sector": "technology", "limit": 3, "metrics": ["peRatio", "pbRatio"], "filters": {{"price_under": 50, "dividendYield_gt": 0}}}}
-
-#     Return ONLY 1 raw JSON object without any explanations or markdown formatting.
-#     Now parse this query:
-#     Find me 5 safe stocks with dividends
-
-#     Output ONLY the JSON object below - NO TEXT BEFORE OR AFTER.
-#     {{"intent": "screen2", "sector": "technology", "limit": 3, "metrics": ["peRatio", "pbRatio", "freeCashFlowYield"], "filters": {{"price_under": 50, "dividendYield_gt": 0}}}}
-
-#     """.strip()
-# prompt2 = """   }
-#             }
-#             {"intent": "screen", "sector": "technology", "limit": 3, "metrics": ["peRatio", "pbRatio", "freeCashFlowYield"], "filters": {"price_under": 50, "dividendYield_gt": 0}}
-#             {"intent": "screen", "sector": "technology", "limit": 3, "metrics": ["peRatio", "
-# """
-
 # parsed_json = extract_json2(prompt2)
 # print(f"\nParsed JSON: {parsed_json}")
 # Scan through QUERY_TO_INTENT and call parse_intent for each query
