@@ -20,7 +20,6 @@ MODEL_NAME = "gpt-4o-mini-2024-07-18" # "meta-llama/Meta-Llama-3.1-8B-Instruct" 
 if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY must be set.")
 
-# HF_TOKEN = "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"
 logging.basicConfig(level=logging.INFO, format='%(levelname)s - %(message)s', encoding='utf-8')
 logger = logging.getLogger(__name__)
 
@@ -80,7 +79,7 @@ class IntentParserAgent:
     def __init__(self, model_name=MODEL_NAME):
         self.model_name = model_name
         # https://huggingface.co/settings/tokens
-        # self.hf_token = HF_TOKEN     # Read-only "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"
+        # self.hf_token = HF_TOKEN    
         self._load_model()
 
     def _load_model(self):
