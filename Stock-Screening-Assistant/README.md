@@ -2,7 +2,7 @@
 
 ### Project Overview
 
-Most stock screeners are built for finance pros. They expect users to know what “Price to earning to growth, Trailing 12 months under 1.5 in the tech sector” means — and even when you do, you're stuck with clunky filter panels and Excel downloads, like with [TradeingView](https://www.tradingview.com/screener/).
+Most stock screeners are built for finance pros. They expect users to know what “Price to earning to growth, Trailing 12 months under 1.5 in the tech sector” means — and even when you do, you're stuck with clunky filter panels and Excel downloads, like with [TradeingView](https://www.tradingview.com/screener/) .
 
 So I set out to build something different: a Stock Screening Assistant that understands plain English. You type:
 
