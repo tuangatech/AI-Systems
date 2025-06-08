@@ -16,6 +16,7 @@ dotenv_path = os.path.join(os.path.dirname(__file__), "..", ".env")
 load_dotenv(dotenv_path)
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+HF_TOKEN = os.getenv("HF_TOKEN")
 MODEL_NAME = "gpt-4o-mini-2024-07-18" # "meta-llama/Meta-Llama-3.1-8B-Instruct" "Qwen/Qwen3-Reranker-8B"
 if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY must be set.")
