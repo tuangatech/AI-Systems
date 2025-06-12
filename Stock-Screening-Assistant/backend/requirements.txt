@@ -1,19 +1,25 @@
-torch --extra-index-url https://download.pytorch.org/whl/cu118 
 langchain
-langchain-community
-langchain-huggingface
-huggingface_hub
-transformers
+#langchain-community
+#langchain-huggingface
+#huggingface_hub
+#transformers
 torch
-accelerate  # Optional but recommended for large models like Llama-3
+#accelerate  # Optional but recommended for large models like Llama-3
 openai 
 langchain-openai
-# fastapi>=0.95.0
-# uvicorn>=0.21.1
-# celery>=5.3.4
+langchain-core
+
+yfinance
+regex
+pandas
+lxml  # For parsing HTML/XML wiki pages
+
+fastapi
+pydantic
+celery
+uvicorn>=0.21.1
 # redis>=4.5.4
-# yfinance>=0.2.21
 # polygon-api-client>=2.0.0
 # sec-edgar-downloader>=1.1.0
-# pydantic
-regex
+
+pytest
