@@ -17,7 +17,7 @@ import pandas as pd
 import yfinance as yf
 import statistics
 
-from .base import BaseAgent
+from base import BaseAgent
 
 warnings.filterwarnings('ignore')
 
@@ -164,11 +164,14 @@ class FilterProcessor:
 
     @classmethod
     def apply_filters(cls, stocks: List[StockData], filters: Dict[str, Any]) -> List[StockData]:
+        logger.info(f"Applying filters: {filters} to {len(stocks)} stocks")
         def passes(stock: StockData) -> bool:
+            logger.info(f"Checking stock: {stock}")
             for key, value in filters.items():
                 base_key, op = key.rsplit('_', 1)  # peRatio_lt -> base_key='peRatio', op='lt'
                 # attr = cls.attr_map.get(base_key)
                 stock_val = getattr(stock, base_key, None)
+                logger.info(f"Checking filter: {key} with value {value} for stock {stock.symbol} with value {stock_val}")
                 if stock_val is None:
                     return False
                 if op == 'lt' and stock_val >= value: return False
@@ -251,7 +254,7 @@ class DataProcessorAgent(BaseAgent):
             else:
                 filtered = filtered[:5] # Default to top 5 if no limit specified
 
-            logger.info(f"Found {len(stocks)} stocks, after filtering {len(filtered)} stocks for intent: {intent.intent}")
+            logger.info(f"Found {len(stocks)} stocks, after filtering {len(filtered)} stocks")
 
             # Prepare output combining metrics and filters
             metric_keys = set(intent.metrics + [k.split("_")[0] for k in intent.filters.keys()])
@@ -300,3 +303,60 @@ class DataProcessorAgent(BaseAgent):
         except Exception as e:
             logger.exception("Error processing intent")
             return {"success": False, "error": str(e), "results": []}
+
+# Example usage and testing
+if __name__ == "__main__":
+    # Initialize the agent
+    agent = DataProcessorAgent()
+    
+    # Test cases
+    test_intents = [
+        {
+            "intent": "screen",
+            "sector": "technology",
+            "limit": 3,
+            "metrics": ["peRatio", "pbRatio", "freeCashFlowYield", "debtToEquity", "price"],
+            "filters": {
+                # "price_under": 50,
+                # "dividendYield_gt": 0
+                "price_lt": 400,
+                "peRatio_lt": 40,
+                # "debtToEquity_lt": 5,
+            }
+        },
+        # {
+        #     "intent": "screen",
+        #     "sector": "technology",
+        #     "limit": 5,
+        #     "metrics": ["peRatio", "pbRatio", "freeCashFlowYield"]
+        # },
+        # {
+        #     "intent": "screen",
+        #     "sector": "energy",
+        #     "metrics": ["dividendYield"],
+        #     "limit": 5,
+        #     "filters": {
+        #         "dividendYield_gt": 4
+        #     }
+        # }
+    ]
+    
+    # Process each intent
+    for i, intent in enumerate(test_intents, 1):
+        print(f"\n{'='*50}")
+        print(f"Test Case {i}")
+        print(f"{'='*50}")
+        
+        result = agent.invoke(intent)
+        
+        if result['success']:
+            print(f"Success! Found {result['after_filters']} stocks matching criteria:")
+            print(f"Intent: {result['intent']}")
+            # print(f"Result: {result['results']}")
+            for stock in result['results']:
+                print(f"  {stock['symbol']}: {stock['name']}")
+                for metric in intent['metrics']:
+                    if metric in stock:
+                        print(f"    {metric}: {stock[metric]}")
+        else:
+            print(f"Error: {result['error']}")
