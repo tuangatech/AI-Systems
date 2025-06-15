@@ -5,6 +5,7 @@ Processes stock screening requests based on JSON intents from the Intent Parser 
 """
 
 import logging
+import os
 import time
 import warnings
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -16,8 +17,9 @@ import numpy as np
 import pandas as pd
 import yfinance as yf
 import statistics
+from joblib import Memory  # For caching
 
-from base import BaseAgent
+from .base import BaseAgent
 
 warnings.filterwarnings('ignore')
 
@@ -52,13 +54,13 @@ class StockData:
     name: str
     sector: str
     price: Optional[float] = None
-    pe_ratio: Optional[float] = None
-    pb_ratio: Optional[float] = None
+    peRatio: Optional[float] = None
+    pbRatio: Optional[float] = None
     debtToEquity: Optional[float] = None
-    revenue_growth: Optional[float] = None
-    dividend_yield: Optional[float] = None
-    free_cash_flow_yield: Optional[float] = None
-    market_cap: Optional[float] = None
+    revenueGrowth: Optional[float] = None
+    dividendYield: Optional[float] = None
+    freeCashFlowYield: Optional[float] = None
+    marketCap: Optional[float] = None
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -66,44 +68,44 @@ class StockData:
             'name': self.name,
             'sector': self.sector,
             'price': self.price,
-            'peRatio': self.pe_ratio,
-            'pbRatio': self.pb_ratio,
+            'peRatio': self.peRatio,
+            'pbRatio': self.pbRatio,
             'debtToEquity': self.debtToEquity,
-            'revenueGrowth': self.revenue_growth,
-            'dividendYield': self.dividend_yield,
-            'freeCashFlowYield': self.free_cash_flow_yield,
-            'marketCap': self.market_cap
+            'revenueGrowth': self.revenueGrowth,
+            'dividendYield': self.dividendYield,
+            'freeCashFlowYield': self.freeCashFlowYield,
+            'marketCap': self.marketCap
         }
 
 # ==== Metric Computation ====
 
-class MetricCalculator:
-    @staticmethod
-    def safe_get(info: Dict, key: str, scale: float = 1.0) -> Optional[float]:
-        try:
-            val = info.get(key)
-            return float(val) * scale if val and val > 0 else None
-        except Exception:
-            return None
+# class MetricCalculator:
+#     @staticmethod
+def safe_get(info: Dict, key: str, scale: float = 1.0) -> Optional[float]:
+    try:
+        val = info.get(key)
+        return float(val) * scale if val and val > 0 else None
+    except Exception:
+        return None
 
-    @staticmethod
-    def pe(info): return MetricCalculator.safe_get(info, 'trailingPE') or MetricCalculator.safe_get(info, 'forwardPE')
-    @staticmethod
-    def pb(info): return MetricCalculator.safe_get(info, 'priceToBook')
-    @staticmethod
-    def de(info): return MetricCalculator.safe_get(info, 'debtToEquity')
-    @staticmethod
-    def rg(info): return MetricCalculator.safe_get(info, 'revenueGrowth', 100.0)
-    @staticmethod
-    def dy(info): return MetricCalculator.safe_get(info, 'dividendYield', 100.0)
-    @staticmethod
-    def fcfy(info):
-        try:
-            mcap = info.get('marketCap')
-            fcf = info.get('freeCashflow')
-            return (float(fcf) / float(mcap)) * 100 if mcap and fcf and mcap > 0 else None
-        except Exception:
-            return None
+# @staticmethod
+def pe(info): return safe_get(info, 'trailingPE') or safe_get(info, 'forwardPE')
+# @staticmethod
+def pb(info): return safe_get(info, 'priceToBook')
+# @staticmethod
+def de(info): return safe_get(info, 'debtToEquity')
+# @staticmethod
+def rg(info): return safe_get(info, 'revenueGrowth') # scale = 100.0
+# @staticmethod
+def dy(info): return safe_get(info, 'dividendYield') # scale = 100.0
+# @staticmethod
+def fcfy(info):  # Free Cash Flow Yield = Free Cash Flow / Market Cap
+    try:
+        mcap = info.get('marketCap')
+        fcf = info.get('freeCashflow')
+        return (float(fcf) / float(mcap)) if mcap and fcf and mcap > 0 else None #  * 100
+    except Exception:
+        return None
 
 # ==== Data Fetching ====
 
@@ -117,21 +119,25 @@ class StockDataFetcher:
             time.sleep(self.delay)
             ticker = yf.Ticker(symbol)
             info = ticker.info
-            if not isinstance(info, dict) or 'symbol' not in info:  #if not info or 'symbol' not in info:
-                return None
+            # logger.info(f"1. Fetched data for {symbol}: {info}")
             price = info.get('currentPrice') or info.get('regularMarketPrice')
+            # logger.info(f"Price for {symbol}: {price}")
+            # logger.info(f"2. PE {pe(info)}")
+            if not isinstance(info, dict) or 'symbol' not in info:  #if not info or 'symbol' not in info:
+                # logger.info(f"2. No data found for {symbol}, skipping")
+                return None
             return StockData(
                 symbol=symbol,
                 name=name,
                 sector=sector,
                 price=float(price) if price else None,
-                pe_ratio=MetricCalculator.pe(info),
-                pb_ratio=MetricCalculator.pb(info),
-                debtToEquity=MetricCalculator.de(info),
-                revenue_growth=MetricCalculator.rg(info),
-                dividend_yield=MetricCalculator.dy(info),
-                free_cash_flow_yield=MetricCalculator.fcfy(info),
-                market_cap=info.get('marketCap')
+                peRatio=pe(info),
+                pbRatio=pb(info),
+                debtToEquity=de(info),
+                revenueGrowth=rg(info),
+                dividendYield=dy(info),
+                freeCashFlowYield=fcfy(info),
+                marketCap=info.get('marketCap')
             )
         except Exception as e:
             logger.error(f"Fetch failed for {symbol}: {e}")
@@ -151,27 +157,17 @@ class StockDataFetcher:
 
 class FilterProcessor:
     # metric_keys = ["peRatio", "pbRatio", "freeCashFlowYield", "price", "dividendYield", "debtToEquity", "revenueGrowth", "marketCap"]
-    # attr_map = {
-    #     'price': 'price',
-    #     'peRatio': 'peRatio',
-    #     'pbRatio': 'pbRatio',
-    #     'debtToEquity': 'debtToEquity',
-    #     'revenueGrowth': 'revenueGrowth',
-    #     'dividendYield': 'dividendYield',
-    #     'freeCashFlowYield': 'freeCashFlowYield',
-    #     'marketCap': 'market_cap'
-    # }
 
     @classmethod
     def apply_filters(cls, stocks: List[StockData], filters: Dict[str, Any]) -> List[StockData]:
         logger.info(f"Applying filters: {filters} to {len(stocks)} stocks")
         def passes(stock: StockData) -> bool:
-            logger.info(f"Checking stock: {stock}")
+            # logger.info(f"Checking stock: {stock}")
             for key, value in filters.items():
                 base_key, op = key.rsplit('_', 1)  # peRatio_lt -> base_key='peRatio', op='lt'
                 # attr = cls.attr_map.get(base_key)
                 stock_val = getattr(stock, base_key, None)
-                logger.info(f"Checking filter: {key} with value {value} for stock {stock.symbol} with value {stock_val}")
+                # logger.info(f"Checking filter: {key} with value {value} for stock {stock.symbol} with value {stock_val}")
                 if stock_val is None:
                     return False
                 if op == 'lt' and stock_val >= value: return False
@@ -183,36 +179,54 @@ class FilterProcessor:
 
 # ==== S&P 500 Data Source ====
 
+# Setup shared memory cache
+CACHE_DIR = ".sp500_cache"
+memory = Memory(location=CACHE_DIR, verbose=0)
+os.makedirs(CACHE_DIR, exist_ok=True)
+
+# Define cached function outside of class
+@memory.cache
+def _load_sp500_table() -> pd.DataFrame:
+    logger.info("Fetching fresh data from Wikipedia...")
+    return pd.read_html("https://en.wikipedia.org/wiki/List_of_S%26P_500_companies")[0] 
+
 class SP500DataSource:
-    sector_map = {
-        'technology': 'Information Technology',
-        'energy': 'Energy',
-        'healthcare': 'Health Care',
-        'financials': 'Financials',
-        'consumer_discretionary': 'Consumer Discretionary',
-        'consumer_staples': 'Consumer Staples',
-        'industrials': 'Industrials',
-        'materials': 'Materials',
-        'utilities': 'Utilities',
-        'real_estate': 'Real Estate',
-        'REIT': 'Real Estate',
-        'communication_services': 'Communication Services'
-    }
+    def __init__(self, ttl_hours=24):
+        self.ttl_hours = ttl_hours
+    
+    def load_table_with_refresh(self) -> pd.DataFrame:
+        """Load table, respecting TTL by clearing cache if expired."""
+        func = _load_sp500_table
 
-    def __init__(self):
-        self._cache = None
+        # Get the folder where joblib stores this function's cache
+        cache_dir = os.path.join(memory.location, func.__module__, func.__qualname__)
+        
+        if os.path.exists(cache_dir):
+            try:
+                latest_mtime = max(
+                    (os.path.getmtime(os.path.join(root, f)) for root, _, files in os.walk(cache_dir) for f in files),
+                    default=0
+                )
+                age_seconds = time.time() - latest_mtime
 
-    def _load(self) -> pd.DataFrame:
-        if self._cache is None:
-            url = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
-            self._cache = pd.read_html(url)[0]
-        return self._cache
+                if age_seconds > self.ttl_hours * 3600:
+                    logger.info(f"> Cache older than {self.ttl_hours}h. Clearing cache.")
+                    logger.info(f"> Current cache location: {memory.location}")
+                    func.cache_clear()
+                else:
+                    logger.info(f"> Cache is fresh (age: {age_seconds / 3600:.2f}h). Using cached data.")
+            except Exception as e:
+                logger.error(f"Error checking cache age: {e}. Using fresh data.")
+                func.cache_clear()
+        else:
+            logger.info("No cache found. Fetching fresh data.")
+
+        return _load_sp500_table()
 
     def get_by_sector(self, sector: str) -> List[Tuple[str, str, str]]:
-        df = self._load()
-        gics = self.sector_map.get(sector.lower(), sector) 
-        filtered = df[df["GICS Sector"] == gics]            # Global Industry Classification Standard (GICS)
-        return [(row["Symbol"], row["Security"], gics) for _, row in filtered.iterrows()]
+        df = self.load_table_with_refresh()
+        filtered = df[df["GICS Sector"] == sector]            # Global Industry Classification Standard (GICS)
+        return [(row["Symbol"], row["Security"], sector) for _, row in filtered.iterrows()]
 
 # ==== Main Agent ====
 
@@ -221,21 +235,22 @@ class DataProcessorAgent(BaseAgent):
         self.data_source = SP500DataSource()
         self.fetcher = StockDataFetcher(max_workers, rate_limit_delay)
         self.filterer = FilterProcessor()
-        self._sector_cache = defaultdict(dict)  # Automatically initializes inner dict
+        self._sector_cache = defaultdict(dict)  # Cache for sector stocks and medians
     
+    # input {"intent": intent, "query": user query}, passed from inter_agent_chain
     def invoke(self, input: Dict[str, Any]) -> Dict[str, Any]:
-        return self._process_intent(input)
-
-    def _process_intent(self, intent_json: Dict[str, Any]) -> Dict[str, Any]:        
         try:
-            intent = StockIntent.from_json(intent_json)
+            logger.info(f"DataProcessorAgent invoke: Checking input: {input}")
+            intent = StockIntent.from_json(input.get("intent")) 
+            query = input.get("query", "")
             sector = intent.sector
 
-            if intent.intent != "screen":
-                raise ValueError(f"Unsupported intent: {intent.intent}")
+            # if intent.intent != "screen":
+            #     raise ValueError(f"Unsupported intent: {intent.intent}")
 
             # Use cached stocks if available. All stocks of a sector are fetched only once.
             # Check if sector exists and has "stocks"
+            # @TODO: Use Redis for caching beyond instance lifetime
             if sector in self._sector_cache and "stocks" in self._sector_cache[sector]:
                 stocks = self._sector_cache[sector]["stocks"]
                 logger.info(f"Using cached stocks for sector: {sector} with {len(stocks)} entries")
@@ -243,11 +258,29 @@ class DataProcessorAgent(BaseAgent):
                 stock_list = self.data_source.get_by_sector(sector)
                 stocks = self.fetcher.fetch_multiple(stock_list) # calculate metrics (pe_ratio, revenue_growth, etc.) in parallel
                 self._sector_cache[sector]["stocks"] = stocks
+                
+                # normalized_sector = sector.lower().replace(" ", "_")
+                # import os
+                # import json
+                # filepath = os.path.join(f"{normalized_sector}.json")
+                # with open(filepath, "w") as f:
+                #     json.dump([stock.to_dict() for stock in stocks], f, indent=2)
             if not stocks:
-                return {'success': False, 'error': 'No data fetched', 'results': []}
+                return {'success': False, 'error': 'No data fetched', 'results': [], 'intent': intent, 'input': query}
             
             filtered = self.filterer.apply_filters(stocks, intent.filters)
-            filtered.sort(key=lambda s: s.market_cap or 0, reverse=True)
+            # Get the first filter key from intent.filters
+            first_filter_key = next(iter(intent.filters))
+
+            if first_filter_key:
+                # Remove suffix to get the actual metric name (e.g., "peRatio" from "peRatio_lt")
+                metric_name = first_filter_key.rsplit("_", 1)[0]
+
+                # Sort using the extracted metric; handle missing attributes gracefully
+                filtered.sort(key=lambda s: getattr(s, metric_name, 0) or 0, reverse=False)  # Ascending by default
+            else:
+                # Fallback: default sorting by marketCap if no valid filter found
+                filtered.sort(key=lambda s: s.marketCap or 0, reverse=True)
 
             if intent.limit:
                 filtered = filtered[:intent.limit]
@@ -291,21 +324,27 @@ class DataProcessorAgent(BaseAgent):
                 self._sector_cache[intent.sector] = {"medians": sector_medians}
             
             output.append(sector_medians)
-
-            return {
+            results = {
                 "success": True,
-                "intent": intent_json,
+                "intent": intent,
                 "total_found": len(stocks),
                 "after_filters": len(filtered),
                 "results": output,
+                "query": query, # pass to ExplanationAgent to explain
             }
+            logger.info(f">> DataProcessorAgent output:\n{results}")
+
+            return results
 
         except Exception as e:
-            logger.exception("Error processing intent")
+            logger.exception(f"Error processing intent: {e}")
             return {"success": False, "error": str(e), "results": []}
 
 # Example usage and testing
 if __name__ == "__main__":
+    # fetch = StockDataFetcher()
+    # data = fetch.fetch_single("AAPL", "Apple", "Technology")
+    # logger.info(f"Fetched data for AAPL: {data.to_dict() if data else 'No data'}")
     # Initialize the agent
     agent = DataProcessorAgent()
     
