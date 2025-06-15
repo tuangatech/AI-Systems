@@ -23,3 +23,5 @@ uvicorn>=0.21.1
 # sec-edgar-downloader>=1.1.0
 
 pytest
+dotenv
+joblib # For caching
