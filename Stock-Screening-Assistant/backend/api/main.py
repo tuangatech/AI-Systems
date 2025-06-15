@@ -3,7 +3,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.agents.intent_parser import IntentParserAgent
 from backend.agents.data_processor import DataProcessorAgent
 # from tasks.celery_tasks import run_research_task
-from backend.models.schemas import IntentSchema, StockSchema
+from backend.models.schemas import IntentSchema, StockSchema, QueryInputSchema
+from backend.chains.inter_agent_chain import inter_agent_chain
 import logging
 
 logger = logging.getLogger(__name__)
@@ -23,58 +24,33 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-intent_parser = IntentParserAgent()
-data_processor = DataProcessorAgent()
-
-@app.post("/parse")
-async def parse_user_query(query: dict):
-    user_input = query.get("query")
-
+@app.post("/query")
+async def handle_query(query: QueryInputSchema):
+    user_input = query.query.strip()
     if not user_input:
         raise HTTPException(status_code=400, detail="Query input is required")
 
     try:
-        parse_intent = intent_parser.parse_intent(user_input)
-        validated_intent = IntentSchema(**parse_intent)
-        logger.info("> Parsing successful", extra={
-            "intent": validated_intent.model_dump(),
-            "query": user_input,  
-            "endpoint": "/parse"
-        })
-        return validated_intent.model_dump()
-    except Exception as e:
-        logger.error("Parsing failed", extra={
-            "error": str(e),
-            "query": user_input,  
-            "endpoint": "/parse"
-        })
-        raise HTTPException(status_code=500, detail="Internal parsing error")
+        result = inter_agent_chain.invoke({"query": user_input})
+        if result.get("short_circuit"):
+            return {
+                "success": False,
+                "clarification_needed": True,
+                "message": result.get("error", "Clarification required."),
+                "parsed_intent": result.get("parsed", {})
+            }
 
-@app.post("/screen", response_model=StockSchema)
-async def screen_stocks(request: IntentSchema):
-    try:
-        # Convert request to dict and process
-        result = data_processor.process_intent(request.model_dump())
-        
-        if not result["success"]:
-            raise HTTPException(status_code=400, detail=result["error"])
-        
-        logger.info("> Screening successful", extra={
-            "total_found": result["total_found"],
-            "after_filters": result["after_filters"],
-            "endpoint": "/screen"
-        })
-        return result
-    
+        # logger.info(f"Result from inter-agent chain: \n{result}")
+        return {
+            "success": True,
+            "explanation": result.get("explanation"),
+            "results": result.get("results", []),
+            "intent": result.get("intent", {}),
+        }
     except Exception as e:
+        logger.exception("Query handling failed")
         raise HTTPException(status_code=500, detail=str(e))
-    
 
-@app.post("/research")
-async def start_research(tickers: dict):
-    tickers_list = tickers.get("tickers")
-    task = run_research_task.delay(tickers_list)
-    return {"task_id": task.id}
 
 @app.get("/health")
 async def health_check():
