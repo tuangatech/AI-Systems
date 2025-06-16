@@ -19,32 +19,27 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded"
 )
+# Custom CSS to adjust the width of the main content area to 1000px
 st.markdown("""
     <style>
-        .block-container {
-            max-width: 1000px;
-            padding-top: 2rem;
-            padding-bottom: 2rem;
-            padding-left: 2rem;
-            padding-right: 2rem;
-        }
-    </style>""",
-    unsafe_allow_html=True
-)
+        .block-container { max-width: 1000px; padding: 2rem; }
+        .chat-bubble { background-color: #f0f2f6; padding: 1rem; border-radius: 10px; margin-bottom: 1rem; }
+    </style>
+    """, unsafe_allow_html=True)
 
 # Constants
-BACKEND_URL = "http://localhost:8000"  # Update if hosted elsewhere
+BACKEND_URL = "http://localhost:8000"
 
 
 # --- Helper Functions ---
-def send_query_to_backend(query_text):
+def send_query_to_backend(query_text, context_intent=None):
     try:
+        payload = {"query": query_text}
+        if context_intent: # from the second query, we can pass along the intent from the previous query
+            payload["context_intent"] = context_intent
         logger.info(f"Sending query to backend: {f"{BACKEND_URL}/query"}")
-        response = requests.post(f"{BACKEND_URL}/query", json={"query": query_text}) 
-        if response.status_code == 200:
-            return response.json()
-        else:
-            return {"error": f"Backend error: {response.text}"}
+        response = requests.post(f"{BACKEND_URL}/query", json=payload) 
+        return response.json() if response.status_code == 200 else {"error": f"Backend error: {response.text}"}
     except Exception as e:
         return {"error": str(e)}
 
@@ -62,7 +57,7 @@ def render_aggrid_table(df):
         gridOptions=grid_options,
         allow_unsafe_jscode=True,
         theme='streamlit',
-        height=200,
+        height=217,
         width=None,
         update_mode='MODEL_CHANGED',
         allowSorting=True,
@@ -76,6 +71,8 @@ st.title("📈 Stock Screening Assistant")
 # Initialize session state for chat history
 if 'chat_history' not in st.session_state:
     st.session_state['chat_history'] = []
+if 'last_intent' not in st.session_state:
+    st.session_state.last_intent = None
 
 # Input section
 with st.form(key='user_input_form', clear_on_submit=True):
@@ -92,24 +89,29 @@ if submit_button and user_input.strip():
     start_time = time.time()  # Start timing before sending request
     with spinner_placeholder:
         with st.spinner("Processing your query..."):
-            screen_response = send_query_to_backend(user_input)
+            screen_response = send_query_to_backend(user_input, st.session_state.last_intent)
     end_time = time.time()  # End timing after receiving response
     elapsed_time = round(end_time - start_time, 2)  # Rounded to 2 decimals
 
     # Insert at the beginning to show latest query first
-    st.session_state['chat_history'].insert(0, {
+    st.session_state.chat_history.insert(0, {
         "query": user_input,
         "screen_response": screen_response,
         "timestamp": start_time,
         "elapsed_time": elapsed_time
     })
 
+    # Save intent for future follow-up queries
+    if 'intent' in screen_response and isinstance(screen_response['intent'], dict):
+        # logger.info(f"Detected intent: {screen_response['intent']}")
+        st.session_state.last_intent = screen_response['intent']
+
 # Display chat history
 for idx, chat in enumerate(st.session_state['chat_history']):
     try:
-        st.markdown(f"**Query:** {chat['query']}")
+        st.markdown(f"**🧑‍💼 You:** {chat['query']}")
         # Show elapsed time if available
-        logger.info(f"Chat {idx} timestamp: {chat['timestamp']}, elapsed time: {chat['elapsed_time']}")
+        # logger.info(f"Chat {idx} timestamp: {chat['timestamp']}, elapsed time: {chat['elapsed_time']}")
         if 'elapsed_time' in chat:
             st.markdown(f"(*Elapsed Time: {chat['elapsed_time']} seconds*)")
 
@@ -117,10 +119,7 @@ for idx, chat in enumerate(st.session_state['chat_history']):
         # logger.info(f"Response from backend {response}")
 
         if response.get('clarification_needed'):
-            st.warning(response.get('error', 'Clarification required.'))
-            # parsed = response.get('parsed', {})
-            # if parsed:
-            #     st.json(parsed, expanded=False)
+            # st.warning(response.get('error', 'Clarification required.'))
             st.info("Please send a new request with clear sector and filters.")
 
         elif 'error' in response:
@@ -130,15 +129,12 @@ for idx, chat in enumerate(st.session_state['chat_history']):
             intent = response.get('intent', {})
             results = response.get('results', [])
             explanation = response.get('explanation', '')
-            safe_explanation = re.sub(r'(?<!\$)\$(?!\$)', r'\$', explanation)
-
-            # if intent:
-            #     st.markdown("**Parsed Intent:**")
-            #     st.json(intent, expanded=False)
+            safe_explanation = re.sub(r'(?<!\$)\$(?!\$)', r'\$', explanation)  # Escape single $ signs to avoid Markdown formatting issues
 
             if explanation:
-                st.markdown("**Explanation:**")
-                st.markdown(safe_explanation)
+                # st.markdown("**Explanation:**")
+                # st.markdown(safe_explanation)
+                st.markdown(f"<div class='chat-bubble'><b>🤖 Stock Screening Assistant:</b><br>{safe_explanation}</div>", unsafe_allow_html=True)
 
             if results:
                 df = pd.DataFrame(results)
@@ -171,7 +167,7 @@ for idx, chat in enumerate(st.session_state['chat_history']):
                         # Round regular float columns to 2 decimals
                         df[col] = df[col].round(2)
 
-                st.markdown("**Results:**")
+                st.markdown("**📊 Matching Stocks:**")
                 render_aggrid_table(df)
             else:
                 st.info("No matching stocks found.")
@@ -181,4 +177,4 @@ for idx, chat in enumerate(st.session_state['chat_history']):
         logger.exception(f"Error processing response: {e}")
         
 # Footer
-st.markdown("<br><hr><center>Made with ❤️ by Your Name</center>", unsafe_allow_html=True)
+st.markdown("<br><hr><center>Tuan Tran - 2025</center>", unsafe_allow_html=True)
