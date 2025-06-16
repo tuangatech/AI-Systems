@@ -5,13 +5,11 @@ import logging
 from typing import Dict, Any
 from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
-# from langchain_core.runnables import Runnable
-# from langchain_core.output_parsers import JsonOutputParser
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import HumanMessage
 
 from .base import BaseAgent
-from backend.models.schemas import IntentSchema
+from .schemas import IntentSchema
 
 # Load .env
 dotenv_path = os.path.join(os.path.dirname(__file__), "..", ".env")
@@ -66,7 +64,7 @@ class IntentParserAgent(BaseAgent):
                 "- under $N: price_lt = N\n"
                 "- top N stocks: limit = N\n"
                 "- stock metrics used in 'filters' should be in 'metrics'\n"
-                "- 'metrics' attribute always includes 'price' and 'peRatio'\n"
+                # "- 'metrics' attribute always includes 'price' and 'peRatio'\n"
                 "Example output:\n"
                 '{{"sector": "technology", "limit": 3, "metrics": ["price", "peRatio", "pbRatio"], "filters": {{"price_lt": 50, "dividendYield_gt": 0, "freeCashFlowYield_gt": 5}}}}\n'
                 '{{"sector": "REIT", "limit": 5, "metrics": ["price", "dividendYield"], "filters": {{"debtToEquity_lt": 1.0, "revenueGrowth_gt": 5}}}}\n'
@@ -76,10 +74,14 @@ class IntentParserAgent(BaseAgent):
         ])
         self.chain = self.prompt_template | self.llm
 
-    # input: {"query": "Show me 3 undervalued tech stocks under $50 with dividends"}
-    def invoke(self, input: str) -> Dict[str, Any]:
+    # input: {"query": "Show me 3 undervalued tech stocks under $50 with dividends", "context_intent": {'sector': 'energy', ...}}
+    def invoke(self, input: Dict[str, Any]) -> Dict[str, Any]:
         query = input.get("query")
+        context_intent = input.get("context_intent")  # Optional previous intent
 
+        if not query:
+            raise ValueError("Missing 'query' in input")
+        
         message = HumanMessage(content=f"Parse this request:\n{query}\nRespond only with JSON, NO TEXT BEFORE OR AFTER.")
         try:
             result = self.chain.invoke({"messages": [message]})
@@ -89,6 +91,12 @@ class IntentParserAgent(BaseAgent):
 
             # Try parsing JSON safely
             parsed = IntentSchema.model_validate_json(content)
+            logger.info(f"Parsed intent: {parsed.model_dump()}")
+
+            # If parsed intent is vague (e.g., missing key info), merge with context
+            final_intent = self._update_intent(context_intent, parsed.model_dump())
+            logger.info(f"Final intent: {final_intent}")
+                
         except Exception as e:
             logger.warning(f"LLM failed to produce valid JSON: {e}")
             return {
@@ -98,39 +106,63 @@ class IntentParserAgent(BaseAgent):
                 "query": query
             }
 
-        sector = parsed.sector
+        sector = final_intent.get('sector', '')
         if not sector:
             logger.warning("Missing sector in query.")
             return {
                 "clarification_needed": True,
                 "error": "Missing sector in query. Please specify a valid sector.",
-                "parsed": parsed.model_dump(),
+                "parsed": final_intent,
                 "query": query
             }
 
         normalized_sector = sector.strip().lower().replace(" ", "_")
-        # logger.info(f"Normalized sector: {normalized_sector}")
+        logger.info(f"Normalized sector: {normalized_sector}")
         if normalized_sector not in VALID_SECTORS:
             logger.warning(f"Invalid sector: {sector}")
             results = {
                 "clarification_needed": True,
                 "error": f"'{sector}' is not a valid sector. Please try one of: {', '.join(VALID_SECTORS.values())}",
-                "parsed": parsed.model_dump(),
+                "parsed": final_intent,
                 "query": query
             }
             # logger.info(f">> IntentParserAgent results:\n {results}")
             return results 
         else:
-            parsed.sector = VALID_SECTORS[normalized_sector]
-            # logger.info(f"Valid sector: {parsed.sector}")
+            final_intent["sector"] = VALID_SECTORS[normalized_sector]
+            # logger.info(f"Valid sector: {final_intent.sector}")
 
         results = {
             "clarification_needed": False,
-            "intent": parsed.model_dump(),
+            "intent": final_intent,
             "query": query
         }
         logger.info(f">> IntentParserAgent results:\n {results}")
         return results
+    
+    def _update_intent(self, context: Dict[str, Any], current: Dict[str, Any]) -> Dict[str, Any]:
+        final_intent = current.copy()
+        
+        # Handle metrics: add 'price' or 'peRatio' if not present
+        current_metrics = current.get('metrics', [])
+        if 'price' not in final_intent['metrics']:
+            final_intent['metrics'] = final_intent['metrics'] + ['price']
+        if 'peRatio' not in final_intent['metrics']:
+            final_intent['metrics'] = final_intent['metrics'] + ['peRatio']
+        
+        if context: 
+            # No filters means user asked a follow up question like "How about energy stocks?"
+            if not final_intent.get('filters') and context.get('filters'):
+                final_intent['filters'] = context['filters']
+                if not final_intent.get('limit') and context.get('limit'):
+                    final_intent['limit'] = context['limit']
+                # Merge metrics from context and current, then deduplicate
+                context_metrics = context.get('metrics', [])
+                current_metrics = final_intent.get('metrics', [])
+                merged_metrics = list(set(context_metrics + current_metrics))
+                final_intent['metrics'] = merged_metrics
+        
+        return final_intent
     
 # 1. Query: Show me 3 undervalued tech stocks under $50 with dividends
 # Parsed Intent: {'intent': 'screen', 'sector': 'technology', 'limit': 3, 'metrics': ['peRatio', 'pbRatio', 'dividendYield'], 
@@ -138,3 +170,12 @@ class IntentParserAgent(BaseAgent):
 # 2. Query: Find me 5 safe stocks with dividends
 # Parsed Intent: {'intent': 'screen', 'limit': 5, 'metrics': ['dividendYield'], 
 # 'filters': {'debtToEquity_lt': 0.5, 'dividendYield_gt': 0, 'revenueGrowth_gt': 5}}
+
+# agent = IntentParserAgent()
+
+# input_data = {
+#     "query": 'How about energy?',
+#     "context_intent": "{{'sector': 'Health Care', 'limit': 3, 'metrics': ['price', 'dividendYield', 'peRatio'], 'filters': {{'price_lt': 150.0, 'dividendYield_gt': 0.0}}}}"
+# }
+
+# agent.invoke(input_data)
