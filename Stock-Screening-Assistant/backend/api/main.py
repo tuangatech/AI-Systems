@@ -1,9 +1,6 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from backend.agents.intent_parser import IntentParserAgent
-from backend.agents.data_processor import DataProcessorAgent
-# from tasks.celery_tasks import run_research_task
-from backend.models.schemas import IntentSchema, StockSchema, QueryInputSchema
+from backend.agents.schemas import QueryInputSchema
 from backend.chains.inter_agent_chain import inter_agent_chain
 import logging
 
@@ -25,14 +22,20 @@ app.add_middleware(
 )
 
 @app.post("/query")
-async def handle_query(query: QueryInputSchema):
-    user_input = query.query.strip()
+async def handle_query(input: QueryInputSchema):
+    user_input = input.query.strip()
+    context_intent = input.context_intent or {}
+
     if not user_input:
         raise HTTPException(status_code=400, detail="Query input is required")
 
     try:
-        result = inter_agent_chain.invoke({"query": user_input})
-        if result.get("short_circuit"):
+        result = inter_agent_chain.invoke({
+            "query": user_input,
+            "context_intent": context_intent
+        })
+
+        if result.get("short_circuit"):  # Defined by clarification_router
             return {
                 "success": False,
                 "clarification_needed": True,
@@ -45,7 +48,7 @@ async def handle_query(query: QueryInputSchema):
             "success": True,
             "explanation": result.get("explanation"),
             "results": result.get("results", []),
-            "intent": result.get("intent", {}),
+            "intent": result.get("intent", {}),       # Merged intent (with the previous context if applicable)
         }
     except Exception as e:
         logger.exception("Query handling failed")
