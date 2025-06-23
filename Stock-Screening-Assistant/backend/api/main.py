@@ -4,13 +4,14 @@ from backend.agents.schemas import QueryInputSchema
 from backend.chains.inter_agent_chain import inter_agent_chain
 import logging
 
-logger = logging.getLogger(__name__)
 # http://localhost:8000/docs — Swagger UI
 app = FastAPI(
     title="Stock Screening Assistant",
     description="API for screening stocks based on financial metrics and filters.",
-    version="1.0.0"
+    version="1.0.0",
 )
+
+logger = logging.getLogger(__name__)
 
 # CORS middleware (for dev)
 app.add_middleware(
@@ -20,6 +21,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 @app.post("/query")
 async def handle_query(input: QueryInputSchema):
