@@ -13,15 +13,21 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 from collections import defaultdict
 
-import numpy as np
 import pandas as pd
 import yfinance as yf
-import statistics
 from joblib import Memory  # For caching
+from functools import wraps
+from dotenv import load_dotenv
+import statistics
 
 from .base import BaseAgent
 
 warnings.filterwarnings('ignore')
+
+# Load .env
+dotenv_path = os.path.join(os.path.dirname(__file__), "..", ".env")
+load_dotenv(dotenv_path)
+CACHE_DIR = os.getenv("CACHE_DIR")
 
 # Logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
@@ -79,8 +85,6 @@ class StockData:
 
 # ==== Metric Computation ====
 
-# class MetricCalculator:
-#     @staticmethod
 def safe_get(info: Dict, key: str, scale: float = 1.0) -> Optional[float]:
     try:
         val = info.get(key)
@@ -88,17 +92,11 @@ def safe_get(info: Dict, key: str, scale: float = 1.0) -> Optional[float]:
     except Exception:
         return None
 
-# @staticmethod
 def pe(info): return safe_get(info, 'trailingPE') or safe_get(info, 'forwardPE')
-# @staticmethod
 def pb(info): return safe_get(info, 'priceToBook')
-# @staticmethod
 def de(info): return safe_get(info, 'debtToEquity')
-# @staticmethod
 def rg(info): return safe_get(info, 'revenueGrowth') # scale = 100.0
-# @staticmethod
 def dy(info): return safe_get(info, 'dividendYield') # scale = 100.0
-# @staticmethod
 def fcfy(info):  # Free Cash Flow Yield = Free Cash Flow / Market Cap
     try:
         mcap = info.get('marketCap')
@@ -107,52 +105,6 @@ def fcfy(info):  # Free Cash Flow Yield = Free Cash Flow / Market Cap
     except Exception:
         return None
 
-# ==== Data Fetching ====
-
-class StockDataFetcher:
-    def __init__(self, max_workers: int = 10, delay: float = 0.1):
-        self.max_workers = max_workers
-        self.delay = delay
-
-    def fetch_single(self, symbol: str, name: str, sector: str) -> Optional[StockData]:
-        try:
-            time.sleep(self.delay)
-            ticker = yf.Ticker(symbol)
-            info = ticker.info
-            # logger.info(f"1. Fetched data for {symbol}: {info}")
-            price = info.get('currentPrice') or info.get('regularMarketPrice')
-            # logger.info(f"Price for {symbol}: {price}")
-            # logger.info(f"2. PE {pe(info)}")
-            if not isinstance(info, dict) or 'symbol' not in info:  #if not info or 'symbol' not in info:
-                # logger.info(f"2. No data found for {symbol}, skipping")
-                return None
-            return StockData(
-                symbol=symbol,
-                name=name,
-                sector=sector,
-                price=float(price) if price else None,
-                peRatio=pe(info),
-                pbRatio=pb(info),
-                debtToEquity=de(info),
-                revenueGrowth=rg(info),
-                dividendYield=dy(info),
-                freeCashFlowYield=fcfy(info),
-                marketCap=info.get('marketCap')
-            )
-        except Exception as e:
-            logger.error(f"Fetch failed for {symbol}: {e}")
-            return None
-
-    def fetch_multiple(self, stock_list: List[Tuple[str, str, str]]) -> List[StockData]:
-        results = []
-        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            futures = {executor.submit(self.fetch_single, *stock): stock[0] for stock in stock_list}
-            for future in as_completed(futures):
-                stock = future.result()
-                if stock:
-                    results.append(stock)
-        return results
-
 # ==== Filter Processing ====
 
 class FilterProcessor:
@@ -160,7 +112,7 @@ class FilterProcessor:
 
     @classmethod
     def apply_filters(cls, stocks: List[StockData], filters: Dict[str, Any]) -> List[StockData]:
-        logger.info(f"Applying filters: {filters} to {len(stocks)} stocks")
+        # logger.info(f"Applying filters: {filters} to {len(stocks)} stocks")
         def passes(stock: StockData) -> bool:
             # logger.info(f"Checking stock: {stock}")
             for key, value in filters.items():
@@ -178,97 +130,144 @@ class FilterProcessor:
         return [s for s in stocks if passes(s)]
 
 # ==== S&P 500 Data Source ====
-
 # Setup shared memory cache
-CACHE_DIR = ".sp500_cache"
 memory = Memory(location=CACHE_DIR, verbose=0)
 os.makedirs(CACHE_DIR, exist_ok=True)
 
-# Define cached function outside of class
+# Define cached function for all sectors data
 @memory.cache
-def _load_sp500_table() -> pd.DataFrame:
-    logger.info("Fetching fresh data from Wikipedia...")
-    return pd.read_html("https://en.wikipedia.org/wiki/List_of_S%26P_500_companies")[0] 
-
-class SP500DataSource:
-    def __init__(self, ttl_hours=24):
-        self.ttl_hours = ttl_hours
+def _load_all_sectors_data(max_workers: int = 5, delay: float = 0.5) -> Dict[str, List[StockData]]:
+    """Fetch and cache all S&P 500 stock data organized by sector."""
+    logger.info("Fetching all S&P 500 data organized by sectors...")
+    start_time = time.time()
+    # Group stocks by sector
+    sectors_data = defaultdict(list)
+    all_stocks = []
     
-    def load_table_with_refresh(self) -> pd.DataFrame:
-        """Load table, respecting TTL by clearing cache if expired."""
-        func = _load_sp500_table
-
-        # Get the folder where joblib stores this function's cache
-        cache_dir = os.path.join(memory.location, func.__module__, func.__qualname__)
-        
-        if os.path.exists(cache_dir):
-            try:
-                latest_mtime = max(
-                    (os.path.getmtime(os.path.join(root, f)) for root, _, files in os.walk(cache_dir) for f in files),
-                    default=0
-                )
-                age_seconds = time.time() - latest_mtime
-
-                if age_seconds > self.ttl_hours * 3600:
-                    logger.info(f"> Cache older than {self.ttl_hours}h. Clearing cache.")
-                    logger.info(f"> Current cache location: {memory.location}")
-                    func.cache_clear()
-                else:
-                    logger.info(f"> Cache is fresh (age: {age_seconds / 3600:.2f}h). Using cached data.")
-            except Exception as e:
-                logger.error(f"Error checking cache age: {e}. Using fresh data.")
-                func.cache_clear()
-        else:
-            logger.info("No cache found. Fetching fresh data.")
-
-        return _load_sp500_table()
-
-    def get_by_sector(self, sector: str) -> List[Tuple[str, str, str]]:
-        df = self.load_table_with_refresh()
-        filtered = df[df["GICS Sector"] == sector]            # Global Industry Classification Standard (GICS)
-        return [(row["Symbol"], row["Security"], sector) for _, row in filtered.iterrows()]
+    try:
+        # Load S&P 500 table
+        df = pd.read_html("https://en.wikipedia.org/wiki/List_of_S%26P_500_companies")[0]
+    except Exception as e:
+        logger.error(f"Failed to load S&P 500 table: {e}")
+        return {}
+    
+    # Prepare all stocks for batch fetching
+    for _, row in df.iterrows():
+        symbol = row["Symbol"]
+        name = row["Security"] 
+        sector = row["GICS Sector"]
+        all_stocks.append((symbol, name, sector))
+    
+    logger.info(f"Fetching data for {len(all_stocks)} stocks across all sectors...")
+    
+    # Batch fetch all stocks using ThreadPoolExecutor
+    def fetch_single(symbol: str, name: str, sector: str) -> Optional[StockData]:
+        try:
+            time.sleep(delay)
+            ticker = yf.Ticker(symbol)
+            info = ticker.info
+            price = info.get('currentPrice') or info.get('regularMarketPrice')
+            if not isinstance(info, dict) or 'symbol' not in info:
+                return None
+            return StockData(
+                symbol=symbol,
+                name=name,
+                sector=sector,
+                price=float(price) if price else None,
+                peRatio=pe(info),
+                pbRatio=pb(info),
+                debtToEquity=de(info),
+                revenueGrowth=rg(info),
+                dividendYield=dy(info),
+                freeCashFlowYield=fcfy(info),
+                marketCap=info.get('marketCap')
+            )
+        except Exception as e:
+            logger.error(f"Fetch failed for {symbol}: {e}")
+            return None
+    
+    # Fetch all stocks in parallel
+    try:
+        results = []
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = {executor.submit(fetch_single, *stock): stock for stock in all_stocks}
+            completed_count = 0
+            total_count = len(futures)
+            
+            for future in as_completed(futures):
+                stock_data = future.result()
+                completed_count += 1
+                
+                if completed_count % 100 == 0 or completed_count == total_count:
+                    logger.info(f"Progress: {completed_count}/{total_count} stocks fetched")
+                
+                if stock_data:
+                    results.append(stock_data)
+                    sectors_data[stock_data.sector].append(stock_data)
+    except Exception as e:
+        logger.error(f"Error fetching stock data: {e}")
+        return {}
+    
+    load_time = time.time() - start_time
+    logger.info(f"Successfully cached {len(results)} stocks across {len(sectors_data)} sectors in {load_time:.2f} seconds")
+    return dict(sectors_data)
 
 # ==== Main Agent ====
 
 class DataProcessorAgent(BaseAgent):
-    def __init__(self, max_workers: int = 10, rate_limit_delay: float = 0.1):
-        self.data_source = SP500DataSource()
-        self.fetcher = StockDataFetcher(max_workers, rate_limit_delay)
+    # Initialized from inter_agent_chain
+    def __init__(self, max_workers: int = 4, rate_limit_delay: float = 0.7, ttl_hours: int = 6, max_retries: int = 3):
+        self.max_workers = max_workers
+        self.rate_limit_delay = rate_limit_delay
+        self.ttl_hours = ttl_hours
+        self.max_retries = max_retries
         self.filterer = FilterProcessor()
-        self._sector_cache = defaultdict(dict)  # Cache for sector stocks and medians
-    
+        
+        # Preload cache on initialization
+        self._sectors_data = _load_all_sectors_data()
+        self._data_loaded = True
+
     # input {"intent": intent, "query": user query}, passed from inter_agent_chain
-    def invoke(self, input: Dict[str, Any]) -> Dict[str, Any]:
-        try:
-            logger.info(f"DataProcessorAgent invoke: Checking input: {input}")
+    def invoke(self, input: Dict[str, Any]) -> Dict[str, Any]:        
+        try:            
+            start_time = time.time()
+            # Check if data is loaded
+            if not self._sectors_data:
+                logger.warning("!! Data not loaded. Preloading sectors data...")
+                self._sectors_data = _load_all_sectors_data()
+            
+            # logger.info(f"DataProcessorAgent invoke: Processing input: {input}")
             intent = StockIntent.from_json(input.get("intent")) 
             query = input.get("query", "")
             sector = intent.sector
-
-            # if intent.intent != "screen":
-            #     raise ValueError(f"Unsupported intent: {intent.intent}")
-
-            # Use cached stocks if available. All stocks of a sector are fetched only once.
-            # Check if sector exists and has "stocks"
-            # @TODO: Use Redis for caching beyond instance lifetime
-            if sector in self._sector_cache and "stocks" in self._sector_cache[sector]:
-                stocks = self._sector_cache[sector]["stocks"]
-                logger.info(f"Using cached stocks for sector: {sector} with {len(stocks)} entries")
-            else:
-                stock_list = self.data_source.get_by_sector(sector)
-                stocks = self.fetcher.fetch_multiple(stock_list) # calculate metrics (pe_ratio, revenue_growth, etc.) in parallel
-                self._sector_cache[sector]["stocks"] = stocks
-                
-                # normalized_sector = sector.lower().replace(" ", "_")
-                # import os
-                # import json
-                # filepath = os.path.join(f"{normalized_sector}.json")
-                # with open(filepath, "w") as f:
-                #     json.dump([stock.to_dict() for stock in stocks], f, indent=2)
-            if not stocks:
-                return {'success': False, 'error': 'No data fetched', 'results': [], 'intent': intent, 'input': query}
+            
+            # Get stocks from pre-loaded cache
+            if sector not in self._sectors_data:
+                available_sectors = ", ".join(self._sectors_data.keys())
+                return {
+                    "success": False, 
+                    "error": f"Sector '{sector}' not found. Available sectors: {available_sectors}",
+                    "results": []
+                }
+            
+            stocks = self._sectors_data[sector]
+            # logger.info(f"Using cached stocks for sector: {sector} with {len(stocks)} entries")
             
             filtered = self.filterer.apply_filters(stocks, intent.filters)
+
+            # Handle empty result case
+            if not filtered:
+                logger.warning(f"Found {len(stocks)} stocks. No matching stocks found.")
+                return {
+                    "success": False,
+                    "intent": intent,
+                    "query": query,
+                    "total_found": len(stocks),
+                    "after_filters": 0,
+                    "results": [],
+                    "error": "No matching stocks found.",
+                }
+
             # Get the first filter key from intent.filters
             first_filter_key = next(iter(intent.filters))
 
@@ -276,7 +275,7 @@ class DataProcessorAgent(BaseAgent):
                 # Remove suffix to get the actual metric name (e.g., "peRatio" from "peRatio_lt")
                 metric_name = first_filter_key.rsplit("_", 1)[0]
 
-                # Sort using the extracted metric; handle missing attributes gracefully
+                # Sort using the extracted metric; consider missing attributes as 0
                 filtered.sort(key=lambda s: getattr(s, metric_name, 0) or 0, reverse=False)  # Ascending by default
             else:
                 # Fallback: default sorting by marketCap if no valid filter found
@@ -285,7 +284,7 @@ class DataProcessorAgent(BaseAgent):
             if intent.limit:
                 filtered = filtered[:intent.limit]
             else:
-                filtered = filtered[:5] # Default to top 5 if no limit specified
+                filtered = filtered[:3] # Default to top 3 if no limit specified
 
             logger.info(f"Found {len(stocks)} stocks, after filtering {len(filtered)} stocks")
 
@@ -302,100 +301,35 @@ class DataProcessorAgent(BaseAgent):
                         entry[metric] = stock_dict[metric]
                 output.append(entry)
 
-            if sector in self._sector_cache and "medians" in self._sector_cache[sector]:
-                # Use cached sector medians if available
-                sector_medians = self._sector_cache[sector]["medians"]
-                logger.info(f"Using cached sector medians for sector: {sector}")
-            else:
-                # Calculate sector medians and append. All stocks of a sector
-                all_dicts = [s.to_dict() for s in stocks]
-                metric_keys_full = ["peRatio", "pbRatio", "freeCashFlowYield", "price", "dividendYield", "debtToEquity", "revenueGrowth", "marketCap"]
-                medians = {}
-                for key in metric_keys_full:
-                    values = [d.get(key) for d in all_dicts if isinstance(d.get(key), (int, float))]
-                    if values:
-                        medians[key] = round(statistics.median(values), 2)
+            # Find sector medians and append. All stocks of a sector
+            all_dicts = [s.to_dict() for s in stocks]
+            metric_keys_full = ["peRatio", "pbRatio", "freeCashFlowYield", "price", "dividendYield", "debtToEquity", "revenueGrowth", "marketCap"]
+            medians = {}
+            for key in metric_keys_full:
+                values = [d.get(key) for d in all_dicts if isinstance(d.get(key), (int, float))]
+                if values:
+                    medians[key] = round(statistics.median(values), 2)
 
-                sector_medians = {"symbol": "Sector", "name": "Median", "sector": intent.sector}
-                # Add metric values from medians based on metric_keys
-                for key in metric_keys:
-                    sector_medians[key] = medians.get(key)
-
-                self._sector_cache[intent.sector] = {"medians": sector_medians}
+            sector_medians = {"symbol": "Sector", "name": "Median", "sector": intent.sector}
+            # Add metric values from medians based on metric_keys
+            for key in metric_keys:
+                sector_medians[key] = medians.get(key)
             
             output.append(sector_medians)
             results = {
                 "success": True,
                 "intent": intent,
+                "query": query, # pass to ExplanationAgent to explain
                 "total_found": len(stocks),
                 "after_filters": len(filtered),
                 "results": output,
-                "query": query, # pass to ExplanationAgent to explain
             }
-            logger.info(f">> DataProcessorAgent output:\n{results}")
+            # logger.info(f">> DataProcessorAgent output:\n{results}")
+            load_time = time.time() - start_time
+            logger.info(f"DataProcessorAgent invoke() processed in {load_time:.2f} seconds")
 
             return results
 
         except Exception as e:
             logger.exception(f"Error processing intent: {e}")
-            return {"success": False, "error": str(e), "results": []}
-
-# Example usage and testing
-if __name__ == "__main__":
-    # fetch = StockDataFetcher()
-    # data = fetch.fetch_single("AAPL", "Apple", "Technology")
-    # logger.info(f"Fetched data for AAPL: {data.to_dict() if data else 'No data'}")
-    # Initialize the agent
-    agent = DataProcessorAgent()
-    
-    # Test cases
-    test_intents = [
-        {
-            "intent": "screen",
-            "sector": "technology",
-            "limit": 3,
-            "metrics": ["peRatio", "pbRatio", "freeCashFlowYield", "debtToEquity", "price"],
-            "filters": {
-                # "price_under": 50,
-                # "dividendYield_gt": 0
-                "price_lt": 400,
-                "peRatio_lt": 40,
-                # "debtToEquity_lt": 5,
-            }
-        },
-        # {
-        #     "intent": "screen",
-        #     "sector": "technology",
-        #     "limit": 5,
-        #     "metrics": ["peRatio", "pbRatio", "freeCashFlowYield"]
-        # },
-        # {
-        #     "intent": "screen",
-        #     "sector": "energy",
-        #     "metrics": ["dividendYield"],
-        #     "limit": 5,
-        #     "filters": {
-        #         "dividendYield_gt": 4
-        #     }
-        # }
-    ]
-    
-    # Process each intent
-    for i, intent in enumerate(test_intents, 1):
-        print(f"\n{'='*50}")
-        print(f"Test Case {i}")
-        print(f"{'='*50}")
-        
-        result = agent.invoke(intent)
-        
-        if result['success']:
-            print(f"Success! Found {result['after_filters']} stocks matching criteria:")
-            print(f"Intent: {result['intent']}")
-            # print(f"Result: {result['results']}")
-            for stock in result['results']:
-                print(f"  {stock['symbol']}: {stock['name']}")
-                for metric in intent['metrics']:
-                    if metric in stock:
-                        print(f"    {metric}: {stock[metric]}")
-        else:
-            print(f"Error: {result['error']}")
+            return {"success": False, "error": str(e), "query": query, "results": []}      
