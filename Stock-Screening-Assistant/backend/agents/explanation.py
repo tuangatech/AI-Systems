@@ -3,6 +3,7 @@ from langchain_openai import ChatOpenAI
 from langchain.prompts import PromptTemplate
 from dotenv import load_dotenv
 import os
+import time
 import logging
 from typing import Dict, Any
 
@@ -38,18 +39,22 @@ class ExplanationAgent(BaseAgent):
         return prompt | llm
 
     # inputs: {"results": List[Dict], "intent": Dict, "query": str}
-    def invoke(self, inputs: Dict[str, Any]) -> Dict[str, Any]:
-        try:
+    def invoke(self, inputs: Dict[str, Any]) -> Dict[str, Any]:   
+        try:     
+            start_time = time.time()
             query = inputs["query"]
             results = inputs["results"]
+            error = inputs.get("error")
+
+            if error:
+                logger.error(f"Error in inputs: {error}")
+                return f"⚠️ {error}"
             # logger.info(f"Received inputs: {inputs}")
-            logger.info(f"\nExplanationAgent invoke: Checking input: {results}")
+            # logger.info(f"\nExplanationAgent invoke: Checking input: {results}")
             # logger.info(f"Received 1st result: {results[0]}")
             if not results or len(results) < 2:
-                return {
-                    "success": False,
-                    "error": "Not enough data to explain."
-                }
+                logger.warning("Not enough data to generate explanation.")
+                return "Not enough data to explain."
 
             sector_context_data = results[-1]
             selected_stocks = results[:-1]
@@ -72,7 +77,7 @@ class ExplanationAgent(BaseAgent):
 
             logger.info(f"Generating explanation for query: {query}")
             logger.info(f"Stocks: {stocks_desc}")
-            logger.info(f"Sector context: {sector_context_str}\n")
+            # logger.info(f"Sector context: {sector_context_str}\n")
 
             # Run LLM chain
             response = self.chain.invoke({
@@ -81,20 +86,13 @@ class ExplanationAgent(BaseAgent):
                 "sector_context": sector_context_str
             })
 
+            load_time = time.time() - start_time
+            logger.info(f"ExplanationAgent invoke() processed in {load_time:.2f} seconds")
             return response.content
-            # return {
-            #     "success": True,
-            #     "explanation": response.content,
-            #     "intent": inputs.get("intent", {}),
-            #     "results": selected_stocks
-            # }
 
         except Exception as e:
             logger.error(f"LLM explanation error: {e}", exc_info=True)
-            return {
-                "success": False,
-                "error": f"Failed to generate explanation: {str(e)}"
-            }
+            return f"Failed to generate explanation: {str(e)}"
         
 
 if __name__ == "__main__":
