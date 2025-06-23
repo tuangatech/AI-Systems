@@ -57,7 +57,7 @@ def render_aggrid_table(df):
         gridOptions=grid_options,
         allow_unsafe_jscode=True,
         theme='streamlit',
-        height=217,
+        height=160,  #217,
         width=None,
         update_mode='MODEL_CHANGED',
         allowSorting=True,
@@ -76,10 +76,15 @@ if 'last_intent' not in st.session_state:
 
 # Input section
 with st.form(key='user_input_form', clear_on_submit=True):
-    user_input = st.text_input("Enter your stock screening request: Show me 3 undervalued tech stocks under $250 with dividends", key="input_text")
+    user_input = st.text_input(
+        "Enter your stock screening request",
+        key="input_text"
+    )
+        
     col1, col2 = st.columns([0.78, 0.22])
     with col1:
         submit_button = col1.form_submit_button("Send")
+        # preload_button = col1.form_submit_button("Preload Stock Data")
     with col2:
         # Placeholder for the spinner
         spinner_placeholder = st.empty()
@@ -129,12 +134,7 @@ for idx, chat in enumerate(st.session_state['chat_history']):
             intent = response.get('intent', {})
             results = response.get('results', [])
             explanation = response.get('explanation', '')
-            safe_explanation = re.sub(r'(?<!\$)\$(?!\$)', r'\$', explanation)  # Escape single $ signs to avoid Markdown formatting issues
-
-            if explanation:
-                # st.markdown("**Explanation:**")
-                # st.markdown(safe_explanation)
-                st.markdown(f"<div class='chat-bubble'><b>🤖 Stock Screening Assistant:</b><br>{safe_explanation}</div>", unsafe_allow_html=True)
+            safe_explanation = re.sub(r'(?<!\$)\$(?!\$)', '&#36;', explanation)  # Escape single $ signs to avoid Markdown formatting issues
 
             if results:
                 df = pd.DataFrame(results)
@@ -154,7 +154,7 @@ for idx, chat in enumerate(st.session_state['chat_history']):
 
                 # Define which columns should be shown as percentages
                 pct_columns = ['Revenue Growth', 'Free Cash Flow Yield']
-                pct_columns2 = ['Dividend Yield']
+                pct_columns2 = ['Dividend Yield'] # already in percentage format, just need to append '%'
 
                 for col in df.columns:
                     if col in pct_columns:
@@ -169,12 +169,26 @@ for idx, chat in enumerate(st.session_state['chat_history']):
 
                 st.markdown("**📊 Matching Stocks:**")
                 render_aggrid_table(df)
-            else:
-                st.info("No matching stocks found.")
+                logger.info(f"Successfully displayed {len(results)-1} matching stocks.")
+            # else:
+            #     st.info("No matching stocks found.")
+
+            if explanation:
+                # st.markdown("**Explanation:**")
+                # st.markdown(safe_explanation)
+                st.markdown(f"<div class='chat-bubble'><b>🤖 Stock Screening Assistant:</b><br>{safe_explanation}</div>", unsafe_allow_html=True)
         else:
             st.warning("Unexpected response structure.")
     except Exception as e:
         logger.exception(f"Error processing response: {e}")
-        
+
+# explanation = "Stock ABC costs $100 and XYZ costs $200."
+# safe_explanation = re.sub(r'(?<!\$)\$(?!\$)', '&#36;', explanation)
+
+# st.markdown(f"{safe_explanation}")
+# st.markdown(f"<div class='chat-bubble'><b>🤖 Stock Screening Assistant:</b><br>{safe_explanation}</div>", unsafe_allow_html=True)
+# st.markdown(f"<div class='chat-bubble'><b>🤖 Stock Screening Assistant:</b><br>{explanation}</div>", unsafe_allow_html=True)
+
 # Footer
-st.markdown("<br><hr><center>Tuan Tran - 2025</center>", unsafe_allow_html=True)
+st.markdown("<br><hr><center>Tuan Tran - 2025 - \"Show me 3 undervalued tech stocks under $250 with dividend\"</center>", unsafe_allow_html=True)
+
