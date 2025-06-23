@@ -7,6 +7,7 @@ from dotenv import load_dotenv
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import HumanMessage
+import time
 
 from .base import BaseAgent
 from .schemas import IntentSchema
@@ -28,6 +29,8 @@ VALID_SECTORS = {
     'health_care': 'Health Care',
     'healthcare': 'Health Care',
     'financials': 'Financials',
+    'financial': 'Financials',
+    'finance': 'Financials',
     'discretionary': 'Consumer Discretionary',
     'consumer_discretionary': 'Consumer Discretionary',
     'staples': 'Consumer Staples',
@@ -53,49 +56,55 @@ class IntentParserAgent(BaseAgent):
         self.prompt_template = ChatPromptTemplate.from_messages([
             (
                 "system",
-                "You are a financial assistant. Parse stock screening query into structured JSON format.\n"
-                "Return a JSON object with the following keys: intent, sector, limit (optional), metrics, filters (optional)\n"
-                "Rules:\n"
-                "- undervalued: peRatio < 25, pbRatio < 12, freeCashFlowYield > 0.05\n"
-                "- safe, stable: debtToEquity < 30.0, revenueGrowth > 0.02\n"
-                "- high dividend: dividendYield > 4\n"
-                "- dividend paying: dividendYield > 0\n"
-                "- growth: revenueGrowth > 0.10, freeCashFlowYield > 0.05\n"
-                "- under $N: price_lt = N\n"
-                "- top N stocks: limit = N\n"
-                "- stock metrics used in 'filters' should be in 'metrics'\n"
-                # "- 'metrics' attribute always includes 'price' and 'peRatio'\n"
-                "Example output:\n"
-                '{{"sector": "technology", "limit": 3, "metrics": ["price", "peRatio", "pbRatio"], "filters": {{"price_lt": 50, "dividendYield_gt": 0, "freeCashFlowYield_gt": 5}}}}\n'
-                '{{"sector": "REIT", "limit": 5, "metrics": ["price", "dividendYield"], "filters": {{"debtToEquity_lt": 1.0, "revenueGrowth_gt": 5}}}}\n'
-                "Return ONLY 1 raw JSON object without any explanations or markdown formatting."
+                """
+                You are a financial assistant. Parse stock screening query into structured JSON format.
+                Return a JSON object with the following keys: intent, sector, limit (optional), metrics, filters (optional)
+
+                Rules:
+                - undervalued: peRatio < 25, pbRatio < 12, freeCashFlowYield > 0.05
+                - safe, stable: debtToEquity < 10.0, revenueGrowth > 0.03
+                - low debt: debtToEquity < 10.0
+                - high dividend: dividendYield > 4
+                - dividend paying: dividendYield > 0
+                - growth: revenueGrowth > 0.10, freeCashFlowYield > 0.05
+                - large cap: marketCap > 10000000000
+                - under $N: price_lt = N
+                - top N stocks: limit = N
+
+                Example output:
+                {{"sector": "technology", "limit": 3, "metrics": ["price", "peRatio", "pbRatio"], "filters": {{"price_lt": 50, "dividendYield_gt": 0, "freeCashFlowYield_gt": 5}}}}
+                {{"sector": "real estate", "limit": 5, "metrics": ["price", "dividendYield"], "filters": {{"debtToEquity_lt": 5.0, "revenueGrowth_gt": 5}}}}
+
+                Return ONLY 1 raw JSON object without any explanations or markdown formatting.
+                """
             ),
             MessagesPlaceholder(variable_name="messages")
         ])
         self.chain = self.prompt_template | self.llm
 
     # input: {"query": "Show me 3 undervalued tech stocks under $50 with dividends", "context_intent": {'sector': 'energy', ...}}
-    def invoke(self, input: Dict[str, Any]) -> Dict[str, Any]:
+    def invoke(self, input: Dict[str, Any]) -> Dict[str, Any]:        
+        start_time = time.time()
+
         query = input.get("query")
         context_intent = input.get("context_intent")  # Optional previous intent
 
         if not query:
             raise ValueError("Missing 'query' in input")
         
-        message = HumanMessage(content=f"Parse this request:\n{query}\nRespond only with JSON, NO TEXT BEFORE OR AFTER.")
+        message = HumanMessage(content=f"Parse this request:\n{query}" \
+                               "\nRespond only with JSON, NO TEXT BEFORE OR AFTER.")
         try:
             result = self.chain.invoke({"messages": [message]})
             content = result.content.strip()
 
-            logger.info(f"LLM Response Content: {content}")
-
             # Try parsing JSON safely
             parsed = IntentSchema.model_validate_json(content)
-            logger.info(f"Parsed intent: {parsed.model_dump()}")
+            # logger.info(f"Parsed intent: {parsed.model_dump()}")
 
             # If parsed intent is vague (e.g., missing key info), merge with context
             final_intent = self._update_intent(context_intent, parsed.model_dump())
-            logger.info(f"Final intent: {final_intent}")
+            # logger.info(f"Final intent: {final_intent}")
                 
         except Exception as e:
             logger.warning(f"LLM failed to produce valid JSON: {e}")
@@ -117,7 +126,7 @@ class IntentParserAgent(BaseAgent):
             }
 
         normalized_sector = sector.strip().lower().replace(" ", "_")
-        logger.info(f"Normalized sector: {normalized_sector}")
+        # logger.info(f"Normalized sector: {normalized_sector}")
         if normalized_sector not in VALID_SECTORS:
             logger.warning(f"Invalid sector: {sector}")
             results = {
@@ -138,6 +147,9 @@ class IntentParserAgent(BaseAgent):
             "query": query
         }
         logger.info(f">> IntentParserAgent results:\n {results}")
+        load_time = time.time() - start_time
+        logger.info(f"IntentParserAgent invoke processed in {load_time:.2f} seconds")
+
         return results
     
     def _update_intent(self, context: Dict[str, Any], current: Dict[str, Any]) -> Dict[str, Any]:
@@ -165,17 +177,8 @@ class IntentParserAgent(BaseAgent):
         return final_intent
     
 # 1. Query: Show me 3 undervalued tech stocks under $50 with dividends
-# Parsed Intent: {'intent': 'screen', 'sector': 'technology', 'limit': 3, 'metrics': ['peRatio', 'pbRatio', 'dividendYield'], 
+# Parsed Intent: {'sector': 'technology', 'limit': 3, 'metrics': ['peRatio', 'pbRatio', 'dividendYield'], 
 # 'filters': {'price_under': 50, 'dividendYield_gt': 0, 'peRatio_lt': 20, 'pbRatio_lt': 3, 'freeCashFlowYield_gt': 5}}
 # 2. Query: Find me 5 safe stocks with dividends
-# Parsed Intent: {'intent': 'screen', 'limit': 5, 'metrics': ['dividendYield'], 
+# Parsed Intent: {'limit': 5, 'metrics': ['dividendYield'], 
 # 'filters': {'debtToEquity_lt': 0.5, 'dividendYield_gt': 0, 'revenueGrowth_gt': 5}}
-
-# agent = IntentParserAgent()
-
-# input_data = {
-#     "query": 'How about energy?',
-#     "context_intent": "{{'sector': 'Health Care', 'limit': 3, 'metrics': ['price', 'dividendYield', 'peRatio'], 'filters': {{'price_lt': 150.0, 'dividendYield_gt': 0.0}}}}"
-# }
-
-# agent.invoke(input_data)
