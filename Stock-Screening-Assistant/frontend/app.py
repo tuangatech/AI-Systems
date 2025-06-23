@@ -170,24 +170,13 @@ for idx, chat in enumerate(st.session_state['chat_history']):
                 st.markdown("**📊 Matching Stocks:**")
                 render_aggrid_table(df)
                 logger.info(f"Successfully displayed {len(results)-1} matching stocks.")
-            # else:
-            #     st.info("No matching stocks found.")
 
             if explanation:
-                # st.markdown("**Explanation:**")
-                # st.markdown(safe_explanation)
                 st.markdown(f"<div class='chat-bubble'><b>🤖 Stock Screening Assistant:</b><br>{safe_explanation}</div>", unsafe_allow_html=True)
         else:
             st.warning("Unexpected response structure.")
     except Exception as e:
         logger.exception(f"Error processing response: {e}")
-
-# explanation = "Stock ABC costs $100 and XYZ costs $200."
-# safe_explanation = re.sub(r'(?<!\$)\$(?!\$)', '&#36;', explanation)
-
-# st.markdown(f"{safe_explanation}")
-# st.markdown(f"<div class='chat-bubble'><b>🤖 Stock Screening Assistant:</b><br>{safe_explanation}</div>", unsafe_allow_html=True)
-# st.markdown(f"<div class='chat-bubble'><b>🤖 Stock Screening Assistant:</b><br>{explanation}</div>", unsafe_allow_html=True)
 
 # Footer
 st.markdown("<br><hr><center>Tuan Tran - 2025 - \"Show me 3 undervalued tech stocks under $250 with dividend\"</center>", unsafe_allow_html=True)
