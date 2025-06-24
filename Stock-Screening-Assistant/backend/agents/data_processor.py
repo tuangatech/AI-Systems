@@ -10,15 +10,15 @@ import time
 import warnings
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 from collections import defaultdict
 
 import pandas as pd
 import yfinance as yf
 from joblib import Memory  # For caching
-from functools import wraps
 from dotenv import load_dotenv
 import statistics
+import datetime
 
 from .base import BaseAgent
 
@@ -130,7 +130,7 @@ class FilterProcessor:
         return [s for s in stocks if passes(s)]
 
 # ==== S&P 500 Data Source ====
-# Setup shared memory cache
+# Setup shared memory cache. The 'age_limit' is based on the last accessed time of a cached item, not its creation time
 memory = Memory(location=CACHE_DIR, verbose=0)
 os.makedirs(CACHE_DIR, exist_ok=True)
 
@@ -228,17 +228,21 @@ class DataProcessorAgent(BaseAgent):
         self._data_loaded = True
 
     # input {"intent": intent, "query": user query}, passed from inter_agent_chain
-    def invoke(self, input: Dict[str, Any]) -> Dict[str, Any]:        
-        try:            
+    def invoke(self, input: Dict[str, Any]) -> Dict[str, Any]:
+        error = input.get("error")
+        query = input.get("query", "")
+        if error:
+            return {"success": False, "error": error, "results": [], query: query}
+        
+        try:
             start_time = time.time()
-            # Check if data is loaded
-            if not self._sectors_data:
-                logger.warning("!! Data not loaded. Preloading sectors data...")
-                self._sectors_data = _load_all_sectors_data()
+            # @TODO: implement TTL check to reload (reduce_size()?) as joblib cache does not support TTL natively
+            # if not self._sectors_data:  
+            #     logger.warning("!! Data not loaded. Preloading sectors data...")
+            self._sectors_data = _load_all_sectors_data()
             
             # logger.info(f"DataProcessorAgent invoke: Processing input: {input}")
             intent = StockIntent.from_json(input.get("intent")) 
-            query = input.get("query", "")
             sector = intent.sector
             
             # Get stocks from pre-loaded cache

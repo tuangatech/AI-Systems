@@ -107,9 +107,10 @@ class IntentParserAgent(BaseAgent):
             # logger.info(f"Final intent: {final_intent}")
                 
         except Exception as e:
-            logger.warning(f"LLM failed to produce valid JSON: {e}")
+            logger.warning(f"LLM failed to produce valid JSON error: {e}")
+            logger.warning(f"LLM failed to produce valid JSON from: {result.content}")
             return {
-                "clarification_needed": True,
+                "clarification_needed": False,
                 "error": "Could not parse your request. Please clarify your sector or filters.",
                 "raw_response": result.content,
                 "query": query

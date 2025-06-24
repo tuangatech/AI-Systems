@@ -18,9 +18,6 @@ logging.basicConfig(level=logging.INFO, format='%(levelname)s - %(message)s')
 
 class ExplanationAgent(BaseAgent):
     def __init__(self):
-        self.chain = self._build_chain()
-
-    def _build_chain(self):
         prompt = PromptTemplate(
             input_variables=["input", "stocks", "sector_context"],
             template="""
@@ -29,14 +26,14 @@ class ExplanationAgent(BaseAgent):
 
                 The sector-level context is: {sector_context}
 
-                The following stocks were selected:{stocks}
+                The following stocks were selected: {stocks}
 
                 Explain clearly and concisely why each stock fits what user asked for.
             """
         )
 
-        llm = ChatOpenAI(model=MODEL_NAME, temperature=0.5, api_key=OPENAI_API_KEY)
-        return prompt | llm
+        llm = ChatOpenAI(model=MODEL_NAME, temperature=0.3, api_key=OPENAI_API_KEY)
+        self.chain =  prompt | llm
 
     # inputs: {"results": List[Dict], "intent": Dict, "query": str}
     def invoke(self, inputs: Dict[str, Any]) -> Dict[str, Any]:   
