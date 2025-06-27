@@ -4,7 +4,7 @@ from typing import List, Dict, Optional, Any
 
 class QueryInputSchema(BaseModel):
     query: str
-    context_intent: Optional[Dict] = None  # New optional context
+    context_intent: Optional[Dict] = None
 
 # Schema for the intent parsed from user input
 class IntentSchema(BaseModel):
