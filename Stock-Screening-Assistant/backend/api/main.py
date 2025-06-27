@@ -13,16 +13,6 @@ app = FastAPI(
 
 logger = logging.getLogger(__name__)
 
-# CORS middleware (for dev)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
 @app.post("/query")
 async def handle_query(input: QueryInputSchema):
     user_input = input.query.strip()
@@ -41,7 +31,7 @@ async def handle_query(input: QueryInputSchema):
             return {
                 "success": False,
                 "clarification_needed": True,
-                "message": result.get("error", "Clarification required."),
+                "error": result.get("error", "Clarification required."),
                 "parsed_intent": result.get("parsed", {})
             }
 
@@ -50,7 +40,7 @@ async def handle_query(input: QueryInputSchema):
             "success": True,
             "explanation": result.get("explanation"),
             "results": result.get("results", []),
-            "intent": result.get("intent", {}),       # Merged intent (with the previous context if applicable)
+            "intent": result.get("intent", {}),
         }
     except Exception as e:
         logger.exception("Query handling failed")
