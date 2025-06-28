@@ -26,17 +26,17 @@ clarification_router = RunnableLambda(
     } if parsed.get("clarification_needed") else {
         "intent": parsed["intent"],
         "query": parsed["query"],
-    }   # input structure for DataProcessorAgent invoke() is {"intent": intent, "input": input}
+    }   # input structure for DataProcessorAgent invoke() is {"intent": intent, "query": query}
 )
 
 # Step 3: Run data processor
 # processor_step = RunnableLambda(lambda x: data_processor.invoke(x)) # to pass both intent and query, rather than just x["intent"]
 def run_data_processor(data, agent: DataProcessorAgent):
     # data should contain {"intent": intent, "query": query} from clarification_router
-    result = agent.invoke(data)     # include intent and query in the input
+    result = agent.invoke(data)         # include intent and query in the input
     return {
         **data,
-        "results": result["results"]  # Add results to the data
+        "results": result["results"]    # Add results to the data
     } 
 processor_step = RunnableLambda(partial(run_data_processor, agent=data_processor))
 
