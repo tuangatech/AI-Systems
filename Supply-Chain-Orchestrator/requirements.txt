@@ -1,0 +1,48 @@
+# Core LangChain & LangGraph Ecosystem
+#langchain-core==0.2.5
+#langflow>=1.0.1
+langchain==0.2.16
+langgraph==0.2.14
+langchain-openai==0.1.25
+openai==1.45.0
+
+# Additional recommended dependencies for RAG
+langchain-community==0.2.16
+langchain-core>=0.2.36
+
+# Data Handling & Analysis
+numpy
+pandas
+scipy>=1.13.0
+
+# Database
+psycopg2-binary
+sqlalchemy
+
+# Forecasting & Statistics
+statsmodels
+scikit-learn # For simpler models if needed
+# prophet==1.1.5 # Optional, but great for demo
+
+# API Calls for Weather
+requests
+httpx
+
+# PDF Report Generation
+reportlab
+# python-docx==1.1.0 # Alternative to ReportLab
+# weasyprint==61.0 # Alternative for HTML-based PDFs
+matplotlib
+
+# Simple Web UI for Demo
+# streamlit
+# gradio==4.24.0
+
+# Environment & Config Management
+python-dotenv # Crucial for managing API keys
+
+# Utilities & Code Quality
+pydantic
+pydantic-settings
+typing-extensions
+# jupyter==1.0.0 # Useful for exploration
