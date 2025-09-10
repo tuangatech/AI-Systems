@@ -127,8 +127,8 @@ for idx, chat in enumerate(st.session_state['chat_history']):
             # st.warning(response.get('error', 'Clarification required.'))
             st.info("Please send a new request with clear sector and filters.")
 
-        elif 'error' in response:
-            st.error(response['error'])
+        # elif 'error' in response:
+        #     st.error(response['error'])
 
         elif 'results' in response:
             intent = response.get('intent', {})
