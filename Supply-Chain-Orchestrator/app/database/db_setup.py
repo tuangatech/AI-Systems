@@ -15,7 +15,7 @@ END_DATE = datetime.today()  # Today
 START_DATE = END_DATE - timedelta(days=2*365)  # 2*365 Approx. 2 years ago
 PRODUCTS = ["vanilla", "chocolate"]  # Product codes
 PRODUCT_NAMES = ["Vanilla Ice Cream", "Chocolate Ice Cream"]
-BASE_SALES = {PRODUCTS[0]: 50, PRODUCTS[1]: 100}  # Base average daily sales
+BASE_SALES = {PRODUCTS[0]: 100, PRODUCTS[1]: 50}  # Base average daily sales
 SEASONALITY_FACTOR = {
     # Month: multiplier (e.g., 1.0 = base, 1.4 = 40% increase)
     1: 0.7,   # Jan - winter drop
@@ -34,11 +34,11 @@ SEASONALITY_FACTOR = {
 NOISE_SCALE = 10  # Standard deviation of random noise
 
 # Load environment variable (DATABASE_URL in .env)
-DB_URL = os.getenv("DATABASE_URL")
-if not DB_URL:
-    raise ValueError("DATABASE_URL environment variable is not set!")
+database_url = os.getenv("DATABASE_URL")
+if not database_url:
+    raise ValueError("DATABASE_URL environment variable not set")
 
-engine = create_engine(DB_URL)
+engine = create_engine(database_url)
 
 def create_tables():
     """Create the required tables if they don't exist."""
@@ -60,11 +60,14 @@ def create_tables():
         """))
 
         # Create inventory table
+        # safety_stock: Minimum buffer stock to prevent stockouts
+        # reorder_point: Inventory level that triggers a reorder = Safety Stock + (Average Daily Demand × Lead Time in Days)
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS inventory (
                 product_code VARCHAR(50) PRIMARY KEY REFERENCES products(product_code),
                 current_stock INTEGER NOT NULL CHECK (current_stock >= 0),
                 reorder_point INTEGER NOT NULL CHECK (reorder_point >= 0),
+                safety_stock INTEGER NOT NULL CHECK (safety_stock >= 0),
                 last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """))
@@ -147,7 +150,7 @@ def insert_sales_data():
     df = generate_sales_data()
     try:
         # create PostgreSQL engine
-        engine = create_engine(DB_URL)
+        engine = create_engine(database_url)
         
         # Write to PostgreSQL
         df.to_sql('sales', engine, if_exists='append', index=False, method='multi')
@@ -174,13 +177,15 @@ def insert_sample_data():
         """), product_data)
 
         # Insert into inventory
+        # safety_stock: Minimum buffer stock to prevent stockouts
+        # reorder_point: Inventory level that triggers a reorder = Safety Stock + (Average Daily Demand × Lead Time in Days)
         inventory_data = [
-            {'product_code': PRODUCTS[0], 'current_stock': 470, 'reorder_point': 350},
-            {'product_code': PRODUCTS[1], 'current_stock': 510, 'reorder_point': 450},
+            {'product_code': PRODUCTS[0], 'current_stock': 470, 'reorder_point': 600, 'safety_stock': 100},
+            {'product_code': PRODUCTS[1], 'current_stock': 510, 'reorder_point': 400, 'safety_stock': 50},
         ]
         conn.execute(text("""
-            INSERT INTO inventory (product_code, current_stock, reorder_point)
-            VALUES (:product_code, :current_stock, :reorder_point)
+            INSERT INTO inventory (product_code, current_stock, reorder_point, safety_stock)
+            VALUES (:product_code, :current_stock, :reorder_point, :safety_stock)
             ON CONFLICT (product_code) DO NOTHING;
         """), inventory_data)
 
