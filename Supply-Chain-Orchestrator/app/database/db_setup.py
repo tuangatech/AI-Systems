@@ -12,8 +12,9 @@ load_dotenv()
 # Configuration
 # ==============================
 END_DATE = datetime.today()  # Today
-START_DATE = END_DATE - timedelta(days=2*365)  # Approx. 2 years ago
-PRODUCTS = ["vanila", "chocolate"]  # Product IDs
+START_DATE = END_DATE - timedelta(days=2*365)  # 2*365 Approx. 2 years ago
+PRODUCTS = ["vanilla", "chocolate"]  # Product codes
+PRODUCT_NAMES = ["Vanilla Ice Cream", "Chocolate Ice Cream"]
 BASE_SALES = {PRODUCTS[0]: 50, PRODUCTS[1]: 100}  # Base average daily sales
 SEASONALITY_FACTOR = {
     # Month: multiplier (e.g., 1.0 = base, 1.4 = 40% increase)
@@ -43,25 +44,28 @@ def create_tables():
     """Create the required tables if they don't exist."""
     with engine.connect() as conn:
         # Drop existing tables for a clean setup
-        conn.execute(text("DROP TABLE IF EXISTS suppliers, inventory, sales CASCADE;"))
+        conn.execute(text("DROP TABLE IF EXISTS sales, inventory, supplier_products, products, suppliers CASCADE;"))
         conn.commit()
 
-        # Create sales table
+        # Create products table
         conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS sales (
-                id SERIAL PRIMARY KEY,
-                date DATE NOT NULL,
-                product_code VARCHAR(50) NOT NULL,
-                quantity INTEGER NOT NULL CHECK (quantity >= 0)
+            CREATE TABLE IF NOT EXISTS products (
+                product_code VARCHAR(50) PRIMARY KEY,
+                product_name VARCHAR(100) NOT NULL,
+                category VARCHAR(50),
+                unit_cost DECIMAL(10,2),
+                selling_price DECIMAL(10,2),
+                created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """))
 
         # Create inventory table
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS inventory (
-                product_code VARCHAR(50) PRIMARY KEY,
+                product_code VARCHAR(50) PRIMARY KEY REFERENCES products(product_code),
                 current_stock INTEGER NOT NULL CHECK (current_stock >= 0),
-                reorder_point INTEGER NOT NULL CHECK (reorder_point >= 0)
+                reorder_point INTEGER NOT NULL CHECK (reorder_point >= 0),
+                last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """))
 
@@ -69,16 +73,38 @@ def create_tables():
         conn.execute(text("""
             CREATE TABLE IF NOT EXISTS suppliers (
                 supplier_id INTEGER PRIMARY KEY,
-                product_code VARCHAR(50) NOT NULL,
+                supplier_name VARCHAR(100) NOT NULL,
+                contact_info TEXT
+            );
+        """))
+
+        # Create supplier_products table (junction table)
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS supplier_products (
+                supplier_id INTEGER REFERENCES suppliers(supplier_id),
+                product_code VARCHAR(50) REFERENCES products(product_code),
                 lead_time_days INTEGER NOT NULL CHECK (lead_time_days >= 0),
                 min_order_quantity INTEGER NOT NULL CHECK (min_order_quantity > 0),
                 cost_per_unit NUMERIC(10, 2) NOT NULL CHECK (cost_per_unit >= 0),
-                FOREIGN KEY (product_code) REFERENCES inventory (product_code)
+                reliability_score DECIMAL(3,2) DEFAULT 1.0,
+                PRIMARY KEY (supplier_id, product_code)
+            );
+        """))
+
+        # Create sales table - cannot insert data with "REFERENCES products(product_code)" (?)
+        conn.execute(text("""
+            CREATE TABLE IF NOT EXISTS sales (
+                id SERIAL PRIMARY KEY,
+                date DATE NOT NULL,
+                product_code VARCHAR(50),
+                quantity INTEGER NOT NULL CHECK (quantity >= 0),
+                region VARCHAR(50),
+                created_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             );
         """))
 
         conn.commit()
-    print("3 Tables created successfully.")
+    print("5 Tables created successfully.")
 
 def generate_sales_data():
     # Generate Date Range
@@ -136,14 +162,21 @@ def insert_sales_data():
 def insert_sample_data():
     """Insert 2-3 sample records into each table."""
     with engine.connect() as conn:
-        # Insert into sales
-        insert_sales_data()
+        # Insert into products
+        product_data = [
+            {'product_code': PRODUCTS[0], 'product_name': PRODUCT_NAMES[0], 'category': 'IceCream', 'unit_cost': 2.0, 'selling_price': 3.0},
+            {'product_code': PRODUCTS[1], 'product_name': PRODUCT_NAMES[1], 'category': 'IceCream', 'unit_cost': 2.2,  'selling_price': 3.5}
+        ]
+        conn.execute(text("""
+            INSERT INTO products (product_code, product_name, category, unit_cost, selling_price)
+            VALUES (:product_code, :product_name, :category, :unit_cost, :selling_price)
+            ON CONFLICT (product_code) DO NOTHING;
+        """), product_data)
 
         # Insert into inventory
         inventory_data = [
-            {'product_code': PRODUCTS[0], 'current_stock': 100, 'reorder_point': 30},
-            {'product_code': PRODUCTS[1], 'current_stock': 45,  'reorder_point': 20},
-            # {'product_code': 3, 'current_stock': 10,  'reorder_point': 15},  # needs reorder
+            {'product_code': PRODUCTS[0], 'current_stock': 470, 'reorder_point': 350},
+            {'product_code': PRODUCTS[1], 'current_stock': 510, 'reorder_point': 450},
         ]
         conn.execute(text("""
             INSERT INTO inventory (product_code, current_stock, reorder_point)
@@ -153,18 +186,31 @@ def insert_sample_data():
 
         # Insert into suppliers
         suppliers_data = [
-            {'supplier_id': 101, 'product_code': PRODUCTS[0], 'lead_time_days': 5, 'min_order_quantity': 50, 'cost_per_unit': 9.99},
-            {'supplier_id': 102, 'product_code': PRODUCTS[1], 'lead_time_days': 7, 'min_order_quantity': 30, 'cost_per_unit': 14.50},
-            # {'supplier_id': 103, 'product_code': 3, 'lead_time_days': 4, 'min_order_quantity': 40, 'cost_per_unit': 19.99},
+            {'supplier_id': 101, 'supplier_name': "Atlanta Ice Cream Supplier", 'contact_info': "tony@atlantaice.com"},
+            {'supplier_id': 102, 'supplier_name': "Chocolate The Best", 'contact_info': "lan@chocobest.com"},
         ]
         conn.execute(text("""
-            INSERT INTO suppliers (supplier_id, product_code, lead_time_days, min_order_quantity, cost_per_unit)
-            VALUES (:supplier_id, :product_code, :lead_time_days, :min_order_quantity, :cost_per_unit)
+            INSERT INTO suppliers (supplier_id, supplier_name, contact_info)
+            VALUES (:supplier_id, :supplier_name, :contact_info)
             ON CONFLICT (supplier_id) DO NOTHING;
         """), suppliers_data)
 
+        # Insert into supplier_products 
+        suppliers_products_data = [
+            {'supplier_id': 101, 'product_code': PRODUCTS[0], 'lead_time_days': 5, 'min_order_quantity': 100, 'cost_per_unit': 2.0},
+            {'supplier_id': 102, 'product_code': PRODUCTS[1], 'lead_time_days': 7, 'min_order_quantity': 130, 'cost_per_unit': 2.2},
+        ]
+        conn.execute(text("""
+            INSERT INTO supplier_products (supplier_id, product_code, lead_time_days, min_order_quantity, cost_per_unit)
+            VALUES (:supplier_id, :product_code, :lead_time_days, :min_order_quantity, :cost_per_unit)
+            ON CONFLICT (supplier_id, product_code) DO NOTHING;
+        """), suppliers_products_data)
+
+        # Insert into sales
+        insert_sales_data()
+
         conn.commit()
-    print("Sample data inserted to 3 tables.")
+    print("Sample data inserted to 5 tables.")
 
 if __name__ == "__main__":
     print("🚀 Setting up database...")
