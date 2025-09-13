@@ -1,0 +1,69 @@
+from langchain.tools import tool
+from app.models.forecaster import DemandForecaster
+import os
+import pandas as pd
+from typing import Optional
+from dotenv import load_dotenv
+
+load_dotenv()
+# Initialize the forecaster
+database_url = os.getenv("DATABASE_URL")
+forecaster = DemandForecaster(database_url)
+
+@tool
+def get_baseline_forecast(product_code: str, forecast_days: Optional[int] = 14) -> dict:
+    """
+    Get a baseline demand forecast for a product using historical sales data.
+    Returns predicted demand for the specified number of days starting from tomorrow.
+    
+    Args:
+        product_code: The ID of the product to forecast demand for
+        forecast_days: Number of days to forecast ahead (default: 14)
+        
+    Returns:
+        Dictionary with forecast results and metadata
+    """
+    return forecaster.get_baseline_forecast(product_code, forecast_days)
+
+# Alternative: Tool that returns just the forecast values for easier LLM consumption
+@tool
+def get_simple_forecast(product_code: str, forecast_days: Optional[int] = 14) -> str:
+    """
+    Get a simple demand forecast summary for a product.
+    
+    Args:
+        product_code: The ID of the product to forecast demand for
+        forecast_days: Number of days to forecast ahead (default: 14)
+        
+    Returns:
+        String summary of the forecast
+    """
+    result = forecaster.get_baseline_forecast(product_code, forecast_days)
+    
+    if not result["success"]:
+        return f"Forecast failed for product {product_code}: {result.get('error', 'Unknown error')}"
+    
+    forecast_df = pd.DataFrame(result["forecast"])
+    total_forecast = forecast_df["predicted_demand"].sum()
+    
+    return (
+        f"Forecast for product {product_code} for next {forecast_days} days:\n"
+        f"Total predicted demand: {total_forecast:.0f} units\n"
+        f"Average daily demand: {total_forecast/forecast_days:.1f} units/day\n"
+        f"Forecast period: {result['forecast'][0]['date']} to {result['forecast'][-1]['date']}"
+    )
+
+# Example usage
+if __name__ == "__main__":    
+    # Get forecast for a product
+    result = forecaster.get_baseline_forecast("vanilla", 14)
+    
+    if result["success"]:
+        print(f"Forecast for product {result['product_code']}:")
+        for day_forecast in result["forecast"]:
+            print(f"{day_forecast['date']}: {day_forecast['predicted_demand']:.1f} units")
+        
+        total_demand = sum(day["predicted_demand"] for day in result["forecast"])
+        print(f"\nTotal 14-day forecast: {total_demand:.0f} units")
+    else:
+        print(f"Error: {result['error']}")
