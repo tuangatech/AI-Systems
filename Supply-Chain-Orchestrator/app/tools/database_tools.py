@@ -337,7 +337,7 @@ if __name__ == "__main__":
         print("\n" + "="*50 + "\n")
         
         # Test supplier info
-        supplier_info = get_supplier_info.invoke({"product_code": "vanilla"})
+        supplier_info = get_supplier_info.invoke({"product_code": "chocolate"})
         print("Supplier Info:", supplier_info)
         
         print("\n" + "="*50 + "\n")

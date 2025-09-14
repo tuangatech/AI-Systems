@@ -11,7 +11,7 @@ database_url = os.getenv("DATABASE_URL")
 forecaster = DemandForecaster(database_url)
 
 @tool
-def get_baseline_forecast(product_code: str, forecast_days: Optional[int] = 14) -> dict:
+def get_baseline_forecast(product_code: str, forecast_days: Optional[int] = 8) -> dict:
     """
     Get a baseline demand forecast for a product using historical sales data.
     Returns predicted demand for the specified number of days starting from tomorrow.
@@ -27,7 +27,7 @@ def get_baseline_forecast(product_code: str, forecast_days: Optional[int] = 14) 
 
 # Alternative: Tool that returns just the forecast values for easier LLM consumption
 @tool
-def get_simple_forecast(product_code: str, forecast_days: Optional[int] = 14) -> str:
+def get_simple_forecast(product_code: str, forecast_days: Optional[int] = 8) -> str:
     """
     Get a simple demand forecast summary for a product.
     
@@ -56,7 +56,7 @@ def get_simple_forecast(product_code: str, forecast_days: Optional[int] = 14) ->
 # Example usage
 if __name__ == "__main__":    
     # Get forecast for a product
-    result = forecaster.get_baseline_forecast("vanilla", 14)
+    result = forecaster.get_baseline_forecast("vanilla", 8)
     
     if result["success"]:
         print(f"Forecast for product {result['product_code']}:")
