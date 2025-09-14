@@ -1,14 +1,11 @@
 # Core LangChain & LangGraph Ecosystem
-#langchain-core==0.2.5
 #langflow>=1.0.1
 langchain==0.2.16
 langgraph==0.2.14
 langchain-openai==0.1.25
-openai==1.45.0
-
-# Additional recommended dependencies for RAG
 langchain-community==0.2.16
 langchain-core>=0.2.36
+openai==1.45.0
 
 # Data Handling & Analysis
 numpy
@@ -46,3 +43,5 @@ pydantic
 pydantic-settings
 typing-extensions
 # jupyter==1.0.0 # Useful for exploration
+
+# httpx version 0.28.1 has a conflict with langchain-openai, downgrading to 0.27.0 with pip install "httpx==0.27.0" --force-reinstall
