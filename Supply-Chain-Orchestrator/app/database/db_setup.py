@@ -193,6 +193,7 @@ def insert_sample_data():
         suppliers_data = [
             {'supplier_id': 101, 'supplier_name': "Atlanta Ice Cream Supplier", 'contact_info': "tony@atlantaice.com"},
             {'supplier_id': 102, 'supplier_name': "Chocolate The Best", 'contact_info': "lan@chocobest.com"},
+            {'supplier_id': 103, 'supplier_name': "Vanilla The Second", 'contact_info': "lan@vanilsnd.com"},
         ]
         conn.execute(text("""
             INSERT INTO suppliers (supplier_id, supplier_name, contact_info)
@@ -202,8 +203,10 @@ def insert_sample_data():
 
         # Insert into supplier_products 
         suppliers_products_data = [
-            {'supplier_id': 101, 'product_code': PRODUCTS[0], 'lead_time_days': 5, 'min_order_quantity': 100, 'cost_per_unit': 2.0},
-            {'supplier_id': 102, 'product_code': PRODUCTS[1], 'lead_time_days': 7, 'min_order_quantity': 130, 'cost_per_unit': 2.2},
+            {'supplier_id': 101, 'product_code': PRODUCTS[0], 'lead_time_days': 5, 'min_order_quantity': 300, 'cost_per_unit': 2.0},
+            {'supplier_id': 101, 'product_code': PRODUCTS[1], 'lead_time_days': 7, 'min_order_quantity': 500, 'cost_per_unit': 2.3},
+            # {'supplier_id': 102, 'product_code': PRODUCTS[1], 'lead_time_days': 7, 'min_order_quantity': 300, 'cost_per_unit': 2.2},
+            # {'supplier_id': 103, 'product_code': PRODUCTS[0], 'lead_time_days': 8, 'min_order_quantity': 500, 'cost_per_unit': 2.1},
         ]
         conn.execute(text("""
             INSERT INTO supplier_products (supplier_id, product_code, lead_time_days, min_order_quantity, cost_per_unit)
