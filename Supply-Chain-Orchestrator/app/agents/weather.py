@@ -6,9 +6,9 @@ logger = logging.getLogger(__name__)
 
 def weather_agent(state: AgentState) -> AgentState:
     """
-    Meteorologist Agent: Fetches weather data and calculates demand impact.
+    Weather Agent: Fetches weather data and calculates demand impact.
     """
-    logger.info("Meteorologist analyzing weather impact")
+    logger.info("Weather analyzing weather impact")
     
     updates = {}
     
@@ -25,8 +25,8 @@ def weather_agent(state: AgentState) -> AgentState:
         updates["errors"] = state.errors
         
     except Exception as e:
-        error_msg = f"Meteorologist error: {str(e)}"
+        error_msg = f"Weather error: {str(e)}"
         logger.error(error_msg)
         updates["errors"] = state.errors + [error_msg]
     
-    return state.model_copy(update=updates)
+    return updates  # state.model_copy(update=updates)
