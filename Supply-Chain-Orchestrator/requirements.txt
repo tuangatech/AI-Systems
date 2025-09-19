@@ -19,7 +19,6 @@ sqlalchemy
 # Forecasting & Statistics
 statsmodels
 scikit-learn # For simpler models if needed
-# prophet==1.1.5 # Optional, but great for demo
 
 # API Calls for Weather
 requests
@@ -27,13 +26,11 @@ httpx
 
 # PDF Report Generation
 reportlab
-# python-docx==1.1.0 # Alternative to ReportLab
-# weasyprint==61.0 # Alternative for HTML-based PDFs
 matplotlib
 
 # Simple Web UI for Demo
-# streamlit
-# gradio==4.24.0
+streamlit
+plotly
 
 # Environment & Config Management
 python-dotenv # Crucial for managing API keys
