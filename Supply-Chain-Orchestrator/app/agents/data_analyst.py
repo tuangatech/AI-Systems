@@ -1,5 +1,5 @@
 from typing import Dict, Any
-from app.graph.state import AgentState
+from app.graph.state import AgentState, ProductInfo, SupplierInfo, ForecastResult
 from app.tools.database_tools import get_product_info, get_historical_sales, get_supplier_info
 from app.tools.forecast_tools import get_baseline_forecast
 import logging
@@ -22,8 +22,8 @@ def data_analyst_agent(state: AgentState) -> AgentState:
         
         # Get supplier information
         supplier_result = get_supplier_info.invoke({"product_code": state.product_code})
-        if supplier_result.get("success"):
-            updates["supplier_info"] = supplier_result
+        if supplier_result.get("success") and supplier_result.get("suppliers"):
+            updates["supplier_info"] = supplier_result.get("suppliers")
         
         # Get baseline forecast
         forecast_result = get_baseline_forecast.invoke({
@@ -31,7 +31,18 @@ def data_analyst_agent(state: AgentState) -> AgentState:
             "forecast_days": state.forecast_days
         })
         if forecast_result.get("success"):
-            updates["baseline_forecast"] = forecast_result
+            # Calculate total predicted demand
+            total_demand = sum(day["predicted_demand"] for day in forecast_result["forecast"])
+            
+            # Create ForecastResult with expected fields
+            forecast_data = {
+                "product_code": forecast_result["product_code"],
+                "success": forecast_result["success"],
+                "forecast": forecast_result["forecast"],
+                "total_predicted_demand": total_demand,
+                "model_used": "exponential_smoothing"
+            }
+            updates["baseline_forecast"] = forecast_data
         
         updates["current_step"] = "data_analysis_complete"
         updates["errors"] = state.errors  # Preserve existing errors
@@ -41,4 +52,4 @@ def data_analyst_agent(state: AgentState) -> AgentState:
         logger.error(error_msg)
         updates["errors"] = state.errors + [error_msg]
     
-    return state.model_copy(update=updates)
+    return updates  # state.model_copy(update=updates) AgentState
