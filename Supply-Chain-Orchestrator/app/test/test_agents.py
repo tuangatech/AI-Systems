@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import patch, MagicMock
 from app.graph.state import create_initial_state, AgentState
 from app.agents.data_analyst import data_analyst_agent
-from app.agents.meteorologist import meteorologist_agent
+from app.agents.weather import weather_agent
 import json
 
 # ** Tests only the agent logic, NOT the tools they call **
@@ -52,10 +52,10 @@ class TestAgents(unittest.TestCase):
         self.assertIsNotNone(result_state.baseline_forecast)                    # forecast was set
         self.assertEqual(result_state.product_info["current_inventory"], 1500)  # correct inventory value
     
-    @patch('app.agents.meteorologist.get_weather_data_raw')
-    @patch('app.agents.meteorologist.get_average_demand_factor')
-    def test_meteorologist_agent(self, mock_avg_factor, mock_weather):
-        """Test Meteorologist agent with mocked tools"""
+    @patch('app.agents.weather.get_weather_data_raw')
+    @patch('app.agents.weather.get_average_demand_factor')
+    def test_weather_agent(self, mock_avg_factor, mock_weather):
+        """Test Weather agent with mocked tools"""
         
         # Mock tool responses
         mock_weather.invoke.return_value = [
@@ -65,7 +65,7 @@ class TestAgents(unittest.TestCase):
         mock_avg_factor.invoke.return_value = 1.8
         
         # Run the agent
-        result_state = meteorologist_agent(self.initial_state)
+        result_state = weather_agent(self.initial_state)
         
         # Assertions
         self.assertEqual(result_state.current_step, "weather_analysis_complete")
