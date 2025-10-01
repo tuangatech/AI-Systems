@@ -25,6 +25,13 @@ def data_analyst_agent(state: AgentState) -> AgentState:
         if supplier_result.get("success") and supplier_result.get("suppliers"):
             updates["supplier_info"] = supplier_result.get("suppliers")
         
+        # Get historical sales data for analysis
+        historical_result = get_historical_sales.invoke({"product_code": state.product_code, "days": state.forecast_days})
+        logger.info(f"* Historical data retrieved: \n{historical_result}")
+        if historical_result.get("success"):            
+            updates["historical_sales_data"] = historical_result.get("sales_data", [])
+            logger.info(f"Retrieved {len(historical_result['sales_data'])} historical sales records")
+
         # Get baseline forecast
         forecast_result = get_baseline_forecast.invoke({
             "product_code": state.product_code, 
@@ -52,4 +59,4 @@ def data_analyst_agent(state: AgentState) -> AgentState:
         logger.error(error_msg)
         updates["errors"] = state.errors + [error_msg]
     
-    return updates  # state.model_copy(update=updates) AgentState
+    return updates
