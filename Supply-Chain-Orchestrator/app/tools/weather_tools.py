@@ -18,13 +18,13 @@ class WeatherAPIError(Exception):
     """Custom exception for Weather API errors"""
     pass
 
-def get_weather_forecast(days: int = 14) -> List[Dict]:
+def get_weather_forecast(days: int = 8) -> List[Dict]:
     """
     Fetches weather forecast for Atlanta using OpenWeatherMap API v3.0.
     Returns cleaned data for the specified number of days.
     
     Args:
-        days: Number of days to forecast (max 16 for free tier, default: 14)
+        days: Number of days to forecast (max 16 for free tier, default: 8)
         
     Returns:
         List of dictionaries containing daily weather data
@@ -71,7 +71,7 @@ def get_weather_forecast(days: int = 14) -> List[Dict]:
                     'min_temp_f': round(day_data['temp']['min'], 1),
                     'feels_like_day_f': round(day_data['feels_like']['day'], 1),
                     'humidity': day_data['humidity'],
-                    'precipitation_probability': day_data.get('pop', 0) * 100,  # Convert to percentage
+                    'precipitation_probability': int(round(day_data.get('pop', 0) * 100)),  # Convert to percentage
                     'weather_condition': day_data['weather'][0]['main'],
                     'weather_description': day_data['weather'][0]['description'],
                     'wind_speed_mph': round(day_data['wind_speed'], 1),
