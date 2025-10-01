@@ -21,40 +21,13 @@ def get_db_engine():
     if not database_url:
         raise ValueError("DATABASE_URL environment variable not set")
     return create_engine(database_url)
-
-# Pydantic models for type safety
-class ProductInfo(BaseModel):
-    product_code: str = Field(..., description="Unique product code identifier")
-    product_name: str = Field(..., description="Name of the product")
-    category: str = Field(..., description="Product category")
-    current_inventory: int = Field(0, description="Current units in stock")
-    reorder_point: int = Field(0, description="Inventory level that triggers reordering")
-    safety_stock: int = Field(0, description="Minimum safety stock level")
-    unit_cost: float = Field(0.0, description="Cost per unit")
-    selling_price: float = Field(0.0, description="Selling price per unit")
-
-class SupplierInfo(BaseModel):
-    supplier_id: str = Field(..., description="Unique supplier identifier")
-    supplier_name: str = Field(..., description="Name of the supplier")
-    product_code: str = Field(..., description="Product code supplied")
-    lead_time_days: int = Field(..., description="Days required for delivery")
-    min_order_quantity: int = Field(..., description="Minimum order quantity required")
-    cost_per_unit: float = Field(..., description="Cost per unit from this supplier")
-    reliability_score: float = Field(1.0, description="Supplier reliability rating (0.0-1.0)")
-
-class SalesData(BaseModel):
-    date: str = Field(..., description="Sale date in YYYY-MM-DD format")
-    product_code: str = Field(..., description="Product code sold")
-    quantity: int = Field(..., description="Number of units sold")
-    region: Optional[str] = Field(None, description="Sales region if available")
-
 @tool
 def get_product_info(product_code: str) -> Dict[str, Any]:
     """
     Retrieves detailed information about a specific product including current inventory levels.
     
     Args:
-        product_code: The unique code identifying the product (e.g., 'IC-VAN-001')
+        product_code: The unique code identifying the product (e.g., 'vanilla')
         
     Returns:
         Dictionary containing product information and inventory data
@@ -128,7 +101,7 @@ def get_supplier_info(product_code: str) -> List[Dict[str, Any]]:
         
         with engine.connect() as conn:
             result = conn.execute(query, {"product_code": product_code})
-            suppliers = [dict(row) for row in result.mappings().all()]
+            suppliers = result.mappings().first()  # [dict(row) for row in result.mappings().all()]
             
         if not suppliers:
             return {
@@ -326,7 +299,7 @@ def get_low_inventory_products(threshold: Optional[int] = None) -> List[Dict[str
         logger.error(error_msg)
         return {"success": False, "error": error_msg, "low_inventory_products": []}
 
-# Example usage
+# Example usage (for testing purposes)
 if __name__ == "__main__":
     # Test the tools
     try:
