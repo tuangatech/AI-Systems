@@ -4,7 +4,7 @@ from datetime import datetime
 
 class ProductInfo(BaseModel):
     """Information about a specific product"""
-    product_id: str = Field(..., description="Unique identifier for the product")  # ... = required
+    product_code: str = Field(..., description="Unique identifier for the product")  # ... = required
     product_name: Optional[str] = Field(None, description="Human-readable product name")
     current_inventory: int = Field(0, description="Current units in stock")
     reorder_point: int = Field(0, description="Inventory level that triggers reordering")
@@ -22,7 +22,7 @@ class WeatherData(BaseModel):
 
 class ForecastResult(BaseModel):
     """Baseline demand forecast from historical data"""
-    product_id: str = Field(..., description="Product being forecasted")
+    product_code: str = Field(..., description="Product being forecasted")
     success: bool = Field(..., description="Whether forecast was successful")
     forecast: List[Dict[str, Any]] = Field(default_factory=list, description="Daily forecast predictions")
     total_predicted_demand: float = Field(0.0, description="Sum of forecasted demand")
@@ -30,7 +30,8 @@ class ForecastResult(BaseModel):
 
 class SupplierInfo(BaseModel):
     """Supplier information and constraints"""
-    supplier_id: str = Field(..., description="Unique supplier identifier")
+    supplier_id: int = Field(..., description="Unique supplier identifier")
+    supplier_name: str = Field(..., description="Supplier name")
     lead_time_days: int = Field(..., description="Days required for delivery")
     min_order_quantity: int = Field(..., description="Minimum order quantity required")
     cost_per_unit: float = Field(..., description="Cost per unit from this supplier")
@@ -38,11 +39,12 @@ class SupplierInfo(BaseModel):
 
 class Recommendation(BaseModel):
     """Final ordering recommendation"""
-    product_id: str = Field(..., description="Product being recommended")
-    supplier_id: str = Field(..., description="Recommended supplier")
+    product_code: str = Field(..., description="Product being recommended")
+    # supplier_id: int = Field(..., description="Recommended supplier identifier")
+    supplier_name: str = Field(..., description="Recommended supplier")
     order_quantity: int = Field(..., description="Units to order")
-    expected_delivery_date: str = Field(..., description="Expected delivery date")
-    total_cost: float = Field(..., description="Total cost of order")
+    # expected_delivery_date: str = Field(..., description="Expected delivery date")
+    # total_cost: float = Field(..., description="Total cost of order")
     justification: str = Field(..., description="Reasoning behind the recommendation")
     confidence_score: float = Field(1.0, description="Confidence in recommendation (0.0-1.0)")
 
@@ -52,8 +54,8 @@ class AgentState(BaseModel):
     This state is updated by each agent in the sequence.
     """
     # Input parameters
-    product_id: str = Field(..., description="Target product ID for analysis")
-    forecast_days: int = Field(14, description="Number of days to forecast")
+    product_code: str = Field(..., description="Target product ID for analysis")
+    forecast_days: int = Field(8, description="Number of days to forecast")
     
     # Data collection phase
     product_info: Optional[ProductInfo] = Field(None, description="Product metadata and current inventory")  # Optional, default None
@@ -64,11 +66,11 @@ class AgentState(BaseModel):
     baseline_forecast: Optional[ForecastResult] = Field(None, description="Baseline statistical forecast")
     weather_forecast: List[WeatherData] = Field(default_factory=list, description="Weather forecast data")
     average_demand_factor: float = Field(1.0, description="Average weather-based demand multiplier")
-    adjusted_forecast: List[Dict] = Field(default_factory=list, description="Weather-adjusted demand forecast")
+    # adjusted_forecast: List[Dict] = Field(default_factory=list, description="Weather-adjusted demand forecast")
     
     # Decision phase
     recommendation: Optional[Recommendation] = Field(None, description="Final ordering recommendation")
-    alternatives: List[Recommendation] = Field(default_factory=list, description="Alternative recommendations considered")
+    # alternatives: List[Recommendation] = Field(default_factory=list, description="Alternative recommendations considered")
     
     # Output phase
     executive_summary: str = Field("", description="Natural language summary for executives")
@@ -85,10 +87,10 @@ class AgentState(BaseModel):
         validate_assignment = True
 
 # Helper function to create initial state
-def create_initial_state(product_id: str, forecast_days: int = 8) -> AgentState:
+def create_initial_state(product_code: str, forecast_days: int = 8) -> AgentState:
     """Create a new state object with initial values"""
     return AgentState(
-        product_id=product_id,
+        product_code=product_code,
         forecast_days=forecast_days,
         current_step="initialized",
         timestamp=datetime.now().isoformat()
