@@ -12,7 +12,7 @@ load_dotenv()
 # Configuration
 # ==============================
 END_DATE = datetime.today()  # Today
-START_DATE = END_DATE - timedelta(days=2*365)  # 2*365 Approx. 2 years ago
+START_DATE = END_DATE - timedelta(days=3*365)  # 3*365 Approx. 3 years ago
 PRODUCTS = ["vanilla", "chocolate"]  # Product codes
 PRODUCT_NAMES = ["Vanilla Ice Cream", "Chocolate Ice Cream"]
 BASE_SALES = {PRODUCTS[0]: 100, PRODUCTS[1]: 50}  # Base average daily sales
