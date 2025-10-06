@@ -25,33 +25,6 @@ def get_baseline_forecast(product_code: str, forecast_days: Optional[int] = 8) -
     """
     return forecaster.get_baseline_forecast(product_code, forecast_days)
 
-# Alternative: Tool that returns just the forecast values for easier LLM consumption
-@tool
-def get_simple_forecast(product_code: str, forecast_days: Optional[int] = 8) -> str:
-    """
-    Get a simple demand forecast summary for a product.
-    
-    Args:
-        product_code: The ID of the product to forecast demand for
-        forecast_days: Number of days to forecast ahead (default: 14)
-        
-    Returns:
-        String summary of the forecast
-    """
-    result = forecaster.get_baseline_forecast(product_code, forecast_days)
-    
-    if not result["success"]:
-        return f"Forecast failed for product {product_code}: {result.get('error', 'Unknown error')}"
-    
-    forecast_df = pd.DataFrame(result["forecast"])
-    total_forecast = forecast_df["predicted_demand"].sum()
-    
-    return (
-        f"Forecast for product {product_code} for next {forecast_days} days:\n"
-        f"Total predicted demand: {total_forecast:.0f} units\n"
-        f"Average daily demand: {total_forecast/forecast_days:.1f} units/day\n"
-        f"Forecast period: {result['forecast'][0]['date']} to {result['forecast'][-1]['date']}"
-    )
 
 # Example usage
 if __name__ == "__main__":    
