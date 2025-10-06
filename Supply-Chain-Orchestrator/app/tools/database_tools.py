@@ -21,6 +21,7 @@ def get_db_engine():
     if not database_url:
         raise ValueError("DATABASE_URL environment variable not set")
     return create_engine(database_url)
+
 @tool
 def get_product_info(product_code: str) -> Dict[str, Any]:
     """
@@ -191,115 +192,7 @@ def get_historical_sales(product_code: str, days: int = 730) -> Dict[str, Any]:
         logger.error(error_msg)
         return {"success": False, "error": error_msg, "product_code": product_code}
 
-@tool
-def get_current_inventory(product_code: str) -> Dict[str, Any]:
-    """
-    Gets the current inventory level for a specific product.
-    
-    Args:
-        product_code: The unique code identifying the product
-        
-    Returns:
-        Dictionary containing current inventory information
-    """
-    try:
-        engine = get_db_engine()
-        query = text("""
-            SELECT 
-                product_code,
-                current_stock as current_inventory,
-                reorder_point,
-                safety_stock,
-                last_updated
-            FROM inventory 
-            WHERE product_code = :product_code
-        """)
-        
-        with engine.connect() as conn:
-            result = conn.execute(query, {"product_code": product_code})
-            row = result.mappings().first()
-            
-        if not row:
-            return {
-                "success": False,
-                "error": f"No inventory record found for product {product_code}",
-                "product_code": product_code,
-                "current_inventory": 0
-            }
-        
-        inventory_data = dict(row)
-        inventory_data["success"] = True
-        
-        logger.info(f"Current inventory for {product_code}: {inventory_data['current_inventory']} units")
-        return inventory_data
-        
-    except Exception as e:
-        error_msg = f"Error retrieving inventory for {product_code}: {e}"
-        logger.error(error_msg)
-        return {"success": False, "error": error_msg, "product_code": product_code, "current_inventory": 0}
 
-@tool
-def get_low_inventory_products(threshold: Optional[int] = None) -> List[Dict[str, Any]]:
-    """
-    Retrieves all products with inventory levels below their reorder point.
-    
-    Args:
-        threshold: Optional custom threshold (if not provided, uses product's reorder_point)
-        
-    Returns:
-        List of products needing reordering
-    """
-    try:
-        engine = get_db_engine()
-        
-        if threshold:
-            query = text("""
-                SELECT 
-                    i.product_code,
-                    p.product_name,
-                    i.current_stock as current_inventory,
-                    i.reorder_point,
-                    i.safety_stock,
-                    i.last_updated
-                FROM inventory i
-                JOIN products p ON i.product_code = p.product_code
-                WHERE i.current_stock <= :threshold
-                ORDER BY i.current_stock ASC
-            """)
-            params = {"threshold": threshold}
-        else:
-            query = text("""
-                SELECT 
-                    i.product_code,
-                    p.product_name,
-                    i.current_stock as current_inventory,
-                    i.reorder_point,
-                    i.safety_stock,
-                    i.last_updated
-                FROM inventory i
-                JOIN products p ON i.product_code = p.product_code
-                WHERE i.current_stock <= i.reorder_point
-                ORDER BY i.current_stock ASC
-            """)
-            params = {}
-        
-        with engine.connect() as conn:
-            result = conn.execute(query, params)
-            low_inventory_products = [dict(row) for row in result.mappings().all()]
-            
-        logger.info(f"Found {len(low_inventory_products)} products with low inventory")
-        return {
-            "success": True,
-            "low_inventory_products": low_inventory_products,
-            "threshold_used": threshold if threshold else "reorder_point"
-        }
-        
-    except Exception as e:
-        error_msg = f"Error retrieving low inventory products: {e}"
-        logger.error(error_msg)
-        return {"success": False, "error": error_msg, "low_inventory_products": []}
-
-# Example usage (for testing purposes)
 if __name__ == "__main__":
     # Test the tools
     try:
