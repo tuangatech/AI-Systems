@@ -6,6 +6,7 @@ import matplotlib
 matplotlib.use('Agg')  # ← Add this before importing any matplotlib stuff
 import asyncio
 import json
+from datetime import date, datetime
 from app.graph.state import create_initial_state
 from app.graph.workflow import supply_chain_workflow
 import logging
@@ -14,13 +15,19 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+class DateTimeEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, (date, datetime)):
+            return obj.isoformat()  # e.g., "2025-10-08"
+        return super().default(obj)
+
 async def test_workflow_basic():
     """Test the complete workflow with a sample product"""
     print("🚀 Testing Meltaway Supply Chain Workflow")
     print("=" * 60)
     
     # Create initial state
-    initial_state = create_initial_state("vanilla", 3)
+    initial_state = create_initial_state("vanilla", 4)
     print(f"📦 Product: {initial_state.product_code}")
     print(f"📅 Forecast Days: {initial_state.forecast_days}")
     print("=" * 60)
@@ -71,11 +78,12 @@ async def test_workflow_basic():
         # Save full state for inspection
         with open('workflow_test_result.json', 'w') as f:
             state_dict = agent_state.model_dump()
+            print(f"State dict: {state_dict}")
             # Convert any non-serializable objects
             for key, value in state_dict.items():
                 if hasattr(value, 'dict'):
                     state_dict[key] = value.dict()
-            json.dump(state_dict, f, indent=2)
+            json.dump(state_dict, f, indent=2, cls=DateTimeEncoder)
         
         print(f"\n💾 Full results saved to 'workflow_test_result.json'")
         
