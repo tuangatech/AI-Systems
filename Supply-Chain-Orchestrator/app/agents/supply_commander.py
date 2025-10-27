@@ -33,7 +33,6 @@ def supply_commander_agent(state: AgentState) -> Dict[str, Any]:
         print(f"* State at Supply Commander:\n{state}\n")
         # Prepare context for LLM
         context = prepare_decision_context(state)
-        print(f"Context:\n{context}\n")
         
         # Get LLM recommendation
         recommendation = get_llm_recommendation(context, state)
@@ -70,8 +69,8 @@ def prepare_decision_context(state: AgentState) -> str:
     # Supplier info
     if state.supplier_info and state.supplier_info.supplier_name:
         supp = state.supplier_info
-        context_parts.append(f"SUPPLIER: {supp.supplier_name}: {supp.lead_time_days} days lead time, "
-                               f"MOQ: {supp.min_order_quantity}, Cost: ${supp.cost_per_unit}/unit")
+        context_parts.append(f"SUPPLIER: {supp.supplier_name}, {supp.lead_time_days} days lead time, "
+                               f"MOQ of {supp.min_order_quantity} units, Cost of ${supp.cost_per_unit}/unit")
 
     return "\n".join(context_parts)
 
@@ -105,7 +104,6 @@ def get_llm_recommendation(context: str, state: AgentState) -> Recommendation:
     if json_match:
         json_str = json_match.group(1)
         recommendation_data = json.loads(json_str)
-        print(f"Extracted JSON:\n{recommendation_data}\n")
     else:
         raise ValueError("No JSON found in LLM response")
     
