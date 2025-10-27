@@ -37,6 +37,6 @@ if __name__ == "__main__":
             print(f"{day_forecast['date']}: {day_forecast['predicted_demand']:.1f} units")
         
         total_demand = sum(day["predicted_demand"] for day in result["forecast"])
-        print(f"\nTotal 14-day forecast: {total_demand:.0f} units")
+        print(f"\nTotal 8-day forecast: {total_demand:.0f} units")
     else:
         print(f"Error: {result['error']}")
