@@ -62,7 +62,9 @@ def get_weather_forecast(days: int = 8) -> List[Dict]:
         
         # Process and clean the forecast data
         cleaned_forecast = []
-        for i, day_data in enumerate(data['daily'][:days]):
+        MAX_FORECAST_DAYS = 8  # Limit to 8 days for free tier of OpenWeatherMap
+        days = min(days + 1, MAX_FORECAST_DAYS)  # +1 to have "days" of forecast starting from tomorrow. OpenWeather starts from today.
+        for i, day_data in enumerate(data['daily'][1:days]):  # from index 1 to skip today, start from tomorrow
             try:
                 forecast_day = {
                     'date': datetime.fromtimestamp(day_data['dt']).strftime('%Y-%m-%d'),
@@ -140,52 +142,6 @@ def calculate_demand_factor(weather_data: List[Dict]) -> List[Dict]:
     
     return demand_forecast
 
-@tool
-def get_weather_and_demand_forecast(days: int = 8) -> str:
-    """
-    Fetches weather forecast for Atlanta and calculates ice cream demand adjustment factors.
-    Returns a summary of the weather impact on demand for the specified number of days.
-    
-    Args:
-        days: Number of days to forecast (default: 8)
-        
-    Returns:
-        String summary of weather impact on demand
-    """
-    try:
-        weather_data = get_weather_forecast(days)
-        demand_data = calculate_demand_factor(weather_data)
-        
-        # Create a summary string for the LLM
-        summary_lines = [
-            f"Weather Impact on Ice Cream Demand Forecast for Atlanta:",
-            f"Forecast Period: {demand_data[0]['date']} to {demand_data[-1]['date']}",
-            f"{'-' * 60}"
-        ]
-        
-        for day in demand_data:
-            summary_lines.append(
-                f"{day['day_of_week']} ({day['date']}): "
-                f"{day['max_temp_f']}°F, {day['weather_description']}, "
-                f"Demand Factor: {day['demand_factor']}x"
-            )
-        
-        # Add overall impact summary
-        avg_demand_factor = sum(day['demand_factor'] for day in demand_data) / len(demand_data)
-        summary_lines.extend([
-            f"{'-' * 60}",
-            f"Average Demand Factor: {avg_demand_factor:.2f}x normal",
-            f"Overall Impact: {'↑ Increase' if avg_demand_factor > 1.0 else '↓ Decrease'} in expected demand"
-        ])
-        
-        return "\n".join(summary_lines)
-        
-    except WeatherAPIError as e:
-        return f"Error fetching weather data: {str(e)}"
-    except Exception as e:
-        logger.error(f"Unexpected error in weather tool: {e}")
-        return f"Failed to generate weather forecast: {str(e)}"
-
 # Alternative tool that returns raw data for other tools to use
 @tool
 def get_weather_data_raw(days: int = 8) -> List[Dict]:
@@ -239,30 +195,22 @@ def get_average_demand_factor(days: int = 8) -> float:
 if __name__ == "__main__":
     # Test the function
     try:
-        forecast = get_weather_forecast(5)
-        print("5-Day Weather Forecast for Atlanta:")
+        forecast = get_weather_forecast(8)
+        print("7-Day Weather Forecast for Atlanta:")
         for day in forecast:
             print(f"{day['date']}: {day['max_temp_f']}°F, {day['weather_description']}")
-        
-        print("\n" + "="*50 + "\n")
-        
-        # Test the LangChain tool PROPERLY
-        # Tools expect a dictionary input, even if it's empty
-        summary = get_weather_and_demand_forecast.invoke({})    # invoke({"days": 8})
-        print("8-Day Weather Summary (default):")
-        print(summary)
         
         print("\n" + "="*50 + "\n")
 
         # Test the average demand factor tool
         avg_factor = get_average_demand_factor.invoke({"days": 8})
-        print(f"8-Day Average Demand Factor: {avg_factor}x")
+        print(f"7-Day Average Demand Factor: {avg_factor}x")
         
         print("\n" + "="*50 + "\n")
         
         # Test the raw data tool
-        raw_data = get_weather_data_raw.invoke({"days": 3})
-        print("Raw 3-Day Weather Data:")
+        raw_data = get_weather_data_raw.invoke({"days": 8})
+        print("Raw 7-Day Weather Data:")
         for day in raw_data:
             print(f"{day['date']}: {day['max_temp_f']}°F, Demand Factor: {day['demand_factor']}x")
         
