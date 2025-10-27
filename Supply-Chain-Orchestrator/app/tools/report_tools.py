@@ -51,6 +51,7 @@ def generate_executive_summary(state: Dict[str, Any]) -> str:
     try:
         # Prepare context for LLM summary
         context = _prepare_summary_context(state)
+        logger.info(f"Summary Context:\n{context}\n")
         
         prompt = f"""
         You are an executive assistant at Meltaway Ice Cream. Create a concise, actionable 
@@ -71,7 +72,6 @@ def generate_executive_summary(state: Dict[str, Any]) -> str:
         response = llm.invoke([HumanMessage(content=prompt)])
         summary = response.content.strip()
         
-        logger.info("Executive summary generated successfully")
         return summary
         
     except Exception as e:
@@ -122,7 +122,7 @@ def create_pdf_report(state: Dict[str, Any]) -> Dict[str, Any]:
         # Add key metrics table
         story.append(Paragraph("KEY METRICS", styles['Heading2']))
         metrics_data = _create_metrics_table_data(state)
-        metrics_table = Table(metrics_data, colWidths=[2*inch, 2*inch])
+        metrics_table = Table(metrics_data, colWidths=[2*inch, 4*inch])
         metrics_table.setStyle(TableStyle([
             ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
             ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
@@ -148,7 +148,7 @@ def create_pdf_report(state: Dict[str, Any]) -> Dict[str, Any]:
         if state.get('recommendation'):
             story.append(Paragraph("RECOMMENDATION", styles['Heading2']))
             rec_data = _create_recommendation_table_data(state['recommendation'])
-            rec_table = Table(rec_data, colWidths=[1.5*inch, 3.5*inch])
+            rec_table = Table(rec_data, colWidths=[2.0*inch, 4.5*inch])
             rec_table.setStyle(TableStyle([
                 ('BACKGROUND', (0, 0), (-1, 0), colors.lightblue),
                 ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
@@ -212,7 +212,7 @@ def _prepare_summary_context(state: Dict[str, Any]) -> str:
     if state.get('recommendation'):
         rec = state['recommendation']
         context_parts.append(f"Recommended Order: {rec.get('order_quantity', 0)} units")
-        context_parts.append(f"Supplier: {rec.get('supplier_id', 'N/A')}")
+        context_parts.append(f"Supplier: {rec.get('supplier_name', 'N/A')}")
         context_parts.append(f"Justification: {rec.get('justification', 'N/A')}")
         context_parts.append(f"Confidence: {rec.get('confidence_score', 0.0):.1%}")
     
@@ -308,7 +308,7 @@ def _create_recommendation_table_data(recommendation: Dict[str, Any]) -> List[Li
     
     data.append(["Product", recommendation.get('product_code', 'N/A')])
     data.append(["Recommended Quantity", f"{recommendation.get('order_quantity', 0):,} units"])
-    data.append(["Supplier", recommendation.get('supplier_id', 'N/A')])
+    data.append(["Supplier", recommendation.get('supplier_name', 'N/A')])
     data.append(["Confidence Level", f"{recommendation.get('confidence_score', 0.0):.1%}"])
     data.append(["Justification", recommendation.get('justification', 'No justification provided')])
     
@@ -391,7 +391,7 @@ if __name__ == "__main__":
         "recommendation": {
             "product_code": "vanilla",
             "order_quantity": 5000,
-            "supplier_id": "100",
+            "supplier_name": "Atlanta Ice Cream Supplier",
             "justification": "Heatwave expected to increase demand by 80%",
             "confidence_score": 0.85
         }
