@@ -37,11 +37,11 @@ st.markdown("""
         background-color: #f8f9fa;
         padding: 1rem;
         border-radius: 10px;
-        border-left: 4px solid #FF6B6B;
-        margin-bottom: 1rem;
+        border: 2px solid #4CAF50;
+        margin: 1rem 0;
     }
     .recommendation-box {
-        background-color: #e8f5e8;
+        background-color: #f0f8f0;
         padding: 1.5rem;
         border-radius: 10px;
         border: 2px solid #4CAF50;
@@ -59,7 +59,7 @@ st.markdown("""
 
 class SupplyChainDashboard:
     def __init__(self):
-        self.products = ["vanilla", "chocolate"]  # Your two products
+        self.products = ["vanilla", "chocolate"]  # Simplify to two products
         self.setup_ui()
     
     def setup_ui(self):
@@ -100,11 +100,11 @@ class SupplyChainDashboard:
             self.show_forecast_charts()
     
     def show_sales_history(self):
-        print("Showing sales history", self.agent_state.historical_sales_data)
+        # print("Showing sales history", self.agent_state.historical_sales_data)
         if self.agent_state.historical_sales_data:
             sales_data = self.agent_state.historical_sales_data
 
-            st.subheader(f"📊 Sales History (Last {self.agent_state.forecast_days} Days)")
+            st.subheader(f"📊 Sales History (Last 14 Days)") # {self.agent_state.forecast_days}
             
             df_sales = pd.DataFrame(sales_data)
             df_sales["date"] = pd.to_datetime(df_sales["date"]).dt.strftime('%Y-%m-%d')
@@ -124,7 +124,7 @@ class SupplyChainDashboard:
     
     def generate_recommendation(self):
         """Generate supply chain recommendation"""
-        with st.spinner("🤖 Analyzing data and generating recommendation..."):
+        with st.spinner("Analyzing data and generating recommendation..."):
             try:
                 # Run the workflow
                 initial_state = create_initial_state(self.selected_product, self.forecast_days)
@@ -148,27 +148,28 @@ class SupplyChainDashboard:
         
         self.show_sales_history()
 
-        """Display the recommendation result"""
         st.subheader("🎯 Supply Chain Recommendation")
 
         if self.agent_state.recommendation:
             rec = self.agent_state.recommendation
             
-            st.markdown('<div class="recommendation-box">', unsafe_allow_html=True)
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                st.metric("Recommended Order", f"{rec.order_quantity:,} units")
-                st.metric("Supplier", rec.supplier_name)
-            
-            with col2:
-                st.metric("Confidence Level", f"{rec.confidence_score:.0%}")
-                st.metric("Expected Impact", "High" if rec.confidence_score > 0.7 else "Medium")
-            
-            st.write("**Justification:**")
-            st.write(rec.justification)
-            
-            st.markdown('</div>', unsafe_allow_html=True)
+            # Use st.container with custom CSS class
+            with st.container():
+                # st.markdown('<div class="recommendation-box">', unsafe_allow_html=True)
+                
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Recommended Order", f"{rec.order_quantity:,} units")
+                    st.metric("Supplier", rec.supplier_name)
+                
+                with col2: 
+                    st.metric("Confidence Level", f"{rec.confidence_score:.0%}")
+                    st.metric("Expected Impact", "High" if rec.confidence_score > 0.7 else "Medium")
+                
+                st.write("**Justification:**")
+                st.write(rec.justification)
+                
+                # st.markdown('</div>', unsafe_allow_html=True)
         
         # Show executive summary
         if self.agent_state.executive_summary:
@@ -184,11 +185,22 @@ class SupplyChainDashboard:
         
         # Prepare forecast data
         forecast_data = self.agent_state.baseline_forecast.forecast
-        dates = [item['date'] for item in forecast_data]
         baseline = [item['predicted_demand'] for item in forecast_data]
+        baseline_by_date = {item['date']: item['predicted_demand'] for item in forecast_data}
+
+        # Extract weather demand factors by date
+        weather_by_date = {
+            item.date: item.demand_factor 
+            for item in self.agent_state.weather_forecast
+        }
+
+        dates = [item['date'] for item in forecast_data]
         
-        # Calculate weather-adjusted forecast
-        adjusted = [demand * self.agent_state.average_demand_factor for demand in baseline]
+        # Calculate adjusted demand: predicted_demand * corresponding demand_factor
+        adjusted = [
+            baseline_by_date[date] * weather_by_date.get(date, 1.0)  # Use 1.0 if no weather factor found
+            for date in dates
+        ]
         
         # Create forecast comparison chart
         fig = make_subplots(specs=[[{"secondary_y": False}]])
