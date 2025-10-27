@@ -25,9 +25,9 @@ def data_analyst_agent(state: AgentState) -> AgentState:
         if supplier_result.get("success") and supplier_result.get("suppliers"):
             updates["supplier_info"] = supplier_result.get("suppliers")
         
-        # Get historical sales data for analysis
-        historical_result = get_historical_sales.invoke({"product_code": state.product_code, "days": state.forecast_days})
-        logger.info(f"* Historical data retrieved: \n{historical_result}")
+        # Get 2 weeks of historical sales data for reference
+        historical_result = get_historical_sales.invoke({"product_code": state.product_code, "days": 14})
+        
         if historical_result.get("success"):            
             updates["historical_sales_data"] = historical_result.get("sales_data", [])
             logger.info(f"Retrieved {len(historical_result['sales_data'])} historical sales records")
@@ -37,6 +37,7 @@ def data_analyst_agent(state: AgentState) -> AgentState:
             "product_code": state.product_code, 
             "forecast_days": state.forecast_days
         })
+        # logger.info(f"* Baseline forecast retrieved: \n{forecast_result}")
         if forecast_result.get("success"):
             # Calculate total predicted demand
             total_demand = sum(day["predicted_demand"] for day in forecast_result["forecast"])
