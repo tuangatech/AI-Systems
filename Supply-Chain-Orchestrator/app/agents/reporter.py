@@ -19,8 +19,8 @@ def reporter_agent(state: AgentState) -> Dict[str, Any]:
         updates["executive_summary"] = summary
         
         # Create PDF report
-        report_data = create_pdf_report.invoke({"state": state.model_dump()})
-        updates["report_data"] = report_data
+        # report_data = create_pdf_report.invoke({"state": state.model_dump()})
+        # updates["report_data"] = report_data
         
         updates["current_step"] = "report_complete"
         updates["errors"] = state.errors
