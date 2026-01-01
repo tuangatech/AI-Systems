@@ -1,0 +1,109 @@
+Project Overview
+
+	A proof-of-concept web application demonstrating production-quality voice input experience with real-time transcription streaming to incorporate into an existing Retrieval-Augmented Generation (RAG) system. The flow is Speech → Real-Time Transcription → User Confirmation → Query Submission. This POC validates a challenging technical component (audio streaming + STT) while deferring backend complexity. This POC aims to prove that voice input can feel as natural and reliable as typing, with immediate visual feedback.
+
+	Success Criteria
+	✅ User can speak a query and see real-time transcription
+	✅ User can edit transcribed text before submission, ensuring user control
+	✅ Reliable Error Handling when microphone fails, transcription errors, or connection drops
+
+
+Functionality Overview
+	This POC delivers a seamless voice-to-text query interface where users click a microphone button to speak their questions and see real-time transcription appear as they talk. The system provides immediate visual feedback with partial transcripts updating live (shown in lighter, italic text) until the user stops speaking, at which point a final, stable transcript appears. Users maintain full control—they can manually stop recording, let it auto-stop after 2 seconds of silence, edit the transcribed text before submission, or cancel and start over. After editing if needed, they click "Send" to submit their query, which triggers a mock response with simulated processing delays to demonstrate the complete interaction loop. The interface supports seamless switching between voice and keyboard input, handles errors gracefully (microphone denials, connection drops, transcription failures), and enforces practical limits like a 30-second maximum recording duration with a visible timer.
+
+Technical Solution
+	The architecture uses a React frontend hosted on AWS S3+CloudFront that captures audio via the Web Audio API and AudioWorklet, converting it to PCM 16-bit mono at 16kHz and streaming ~100ms chunks over a WebSocket connection. The WebSocket terminates at an ECS Fargate container running a Node.js service behind an Application Load Balancer, which acts as a thin proxy to AWS Transcribe Streaming. Each recording session establishes a fresh WebSocket connection that lives only for that single recording—the client streams audio chunks as binary frames, sends an explicit {"type": "end_stream"} JSON signal when done, then waits for the final transcript before closing the connection. The ECS service buffers audio in memory, forwards it to AWS Transcribe using the AWS SDK, and pipes both partial and final transcripts back to the client as JSON messages. Client-side Voice Activity Detection (RMS-based) automatically stops recording after 2 seconds of silence, and the entire system is designed for immediate resource cleanup with no session reuse, making it simple to deploy and demo-ready for stakeholder presentations.
+
+Instruction
+	You are helping build a proof-of-concept web application that demonstrates voice-enabled query input with real-time transcription streaming. The focus is on creating a smooth, reliable voice-to-text experience. There is no RAG backend in this POC—queries result in hardcoded mock responses to complete the user interaction loop.
+
+	When Helping Me
+	For Frontend Development
+
+	Provide complete React components with hooks
+	Include Web Audio API and AudioWorklet implementation
+	Show WebSocket connection code for AWS Transcribe streaming
+	Include proper error handling for microphone permissions
+	Implement mock response logic (simulated processing delay + hardcoded answers)
+	Use modern React patterns (functional components, useState, useEffect)
+	Keep styling simple (can use Tailwind or basic CSS)
+	Show state management for recording, transcription, and mock responses
+
+	For Backend Development (STT Service Only)
+
+	Provide Node.js code for ECS Fargate WebSocket service
+	Show AWS SDK usage for Transcribe Streaming with authentication
+	Include WebSocket server implementation (e.g., using ws library)
+	Demonstrate audio buffering and streaming to AWS Transcribe
+	Handle partial and final transcript events
+	Show proper connection lifecycle management (connect → stream → close)
+	Include Dockerfile for containerizing the STT service
+	Use IAM roles for AWS service authentication (no hardcoded credentials)
+
+	For AWS Infrastructure
+
+	Provide clear step-by-step deployment instructions for:
+	  S3 + CloudFront for React frontend hosting
+	  ECR for Docker image storage
+	  ECS Fargate for STT WebSocket service
+	  Application Load Balancer with WebSocket support
+	Include necessary IAM roles and policies:
+	  ECS task role for Transcribe access 
+	  CloudFront access to S3 bucket
+	Explain HTTPS setup for microphone permissions
+	Suggest simple deployment workflow (build → push → deploy)
+
+	For Testing & Debugging
+
+	Suggest simple console.log debugging approaches
+	Provide sample test queries and expected behaviors with some Generic helpful responses
+	Help troubleshoot common issues:
+	  WebSocket connection failures
+	  Microphone permission denials
+	  Transcription delays or timeouts
+	  Audio format mismatches
+
+	Code Style Preferences
+
+	Include clear comments explaining key sections
+	Provide complete, runnable code (not pseudocode)
+	Show error handling for main failure points:
+	  Microphone access denied
+	  WebSocket disconnect
+	  Transcription errors 
+	  Connection timeouts
+	Keep code simple and readable (this is a POC, not production)
+	Use environment variables for configuration (e.g., WebSocket endpoint URL)
+
+	Important Notes
+
+	No authentication: Single-user POC with no login required
+	Mock responses only: Frontend generates fake responses after user clicks "Send"
+	Focus on voice streaming: Real-time transcription is the core technical challenge
+	Simplify loading indicators: Time-based delays (2-3 seconds) are fine
+	Single user only: No need for scalability or concurrency handling
+	Desktop-first for POC
+
+	What I Need Help With
+	When I ask for help, I'll specify which component I'm working on:
+
+	Frontend voice capture (React components, microphone access, AudioWorklet)
+	WebSocket integration (client-side connection to ECS service)
+	Backend STT service (Node.js WebSocket server, AWS Transcribe streaming)
+	Docker containerization (Dockerfile, ECR push)
+	ECS deployment (Fargate task definition, ALB configuration)
+	Frontend deployment (S3 + CloudFront setup)
+	Mock response logic (simulating backend behavior in frontend)
+	Debugging specific issues (connection problems, transcription errors, etc.)
+
+	Success Criteria for Help Provided
+	Your solutions should:
+
+	✅ Prioritize getting the POC working quickly over perfect architecture
+	✅ Be clear, complete, and immediately usable
+	✅ Focus on the voice streaming + transcription experience
+	✅ Include realistic error handling without over-engineering
+	✅ Avoid unnecessary complexity (no advanced state management, no backend databases)
+	✅ Assume I'm building for a demo/stakeholder presentation
+
+	Provide clear, complete, and practical solutions that demonstrate a production-quality voice input experience.

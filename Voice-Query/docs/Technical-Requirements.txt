@@ -1,0 +1,131 @@
+TR1: Frontend
+
+TR1.1 Single-page application built with React
+TR1.2 Desktop-first responsive design (mobile optional)
+TR1.3 HTTPS required for microphone access
+TR1.4 Deployment: AWS S3 + CloudFront
+
+TR2: Audio Capture & Client Streaming
+
+TR2.1 Use navigator.mediaDevices.getUserMedia for microphone access
+TR2.2 Use AudioWorklet for low-latency capture
+TR2.3 Audio format: PCM 16-bit, 16kHz, mono, little-endian
+TR2.4 Stream audio in ~100ms chunks
+TR2.5 Implement basic client-side Voice Activity Detection (RMS-based)
+  - RMS-based threshold: < 0.01 considered silence (tunable)
+  - Auto-stop after 2 seconds continuous silence
+  - Minimum recording duration: 0.5 seconds (prevents immediate stop)
+  - VAD samples audio at 100ms intervals
+TR2.6 Immediately stop streaming on cancel or input mode switch:
+  - Stop microphone audio capture
+  - Send "end_stream" signal to ECS (or close WebSocket immediately)
+  - Close WebSocket connection
+  - Clear any buffered audio data
+  
+TR3: Speech-to-Text (STT)
+
+TR3.1 Use AWS Transcribe Streaming via WebSocket protocol. No automatic reconnection - each retry initiated by user creates a new connection.
+TR3.2 WebSocket connection terminates at ECS service. A new WebSocket connection is established for each recording session and closed when recording ends.
+TR3.3 STT handled via AWS SDK (@aws-sdk/client-transcribe-streaming)
+TR3.4 Partial and final transcription handled separately
+TR3.5 AWS Transcribe configuration:
+  - Language: en-US
+  - Sample rate: 16000 Hz
+  - Media encoding: PCM
+  - Enable partial results: true
+  - Vocabulary filtering: none (POC)
+  - Profanity filtering: false (POC)
+TR3.6 One transcription session per recording. Each recording initiates a fresh WebSocket connection to ECS, which creates a new AWS Transcribe streaming session. Connection closes after final transcript is received.
+TR3.7 WebSocket connection lifecycle per recording:
+	User clicks microphone → Client opens WebSocket to ECS
+	ECS establishes AWS Transcribe streaming session
+	Audio streams until silence detected or manual stop
+    Client sends "end of stream" signal to ECS (WebSocket message: {type: "stop_stream"})
+    Client continues listening for final transcript
+    ECS closes Transcribe session and returns final transcript
+    Client receives final transcript, then closes WebSocket connection
+	Next recording repeats entire process with new connection
+TR3.8 Client sends explicit "end of stream" signal to ECS service:
+  - Format: WebSocket text message with JSON payload: {"type": "end_stream"}
+  - Sent after final audio chunk
+  - Client continues listening for final transcript response
+TR3.9 ECS service closes AWS Transcribe session and returns final transcript
+TR3.10 WebSocket message protocol:
+  Client → Server:
+    - Audio data: Binary WebSocket frames (raw PCM bytes)
+    - End signal: Text message {"type": "end_stream"}
+  Server → Client:
+    - Partial transcript: {"type": "partial", "text": "hello world"}
+    - Final transcript: {"type": "final", "text": "hello world"}
+    - Error: {"type": "error", "message": "Transcription failed"}
+
+TR4: STT Backend (Container-Based)
+
+TR4.1 Deployed as ECS Fargate service
+TR4.2 Application packaged as Docker container
+TR4.3 Container includes Node.js runtime and AWS SDK dependencies
+TR4.4 Application Load Balancer with WebSocket support
+TR4.5 One WebSocket connection per active recording session. Each connection is short-lived (≤30 seconds) and handles a single recording from start to finish. No connection reuse between recordings.
+TR4.6 Audio buffering and session state maintained in memory for the duration of a single recording only
+TR4.7 Service owns lifecycle: connect → stream → finalize → close. This lifecycle completes for each individual recording.
+TR4.8 Returns both partial and final transcripts to client
+TR4.9 Container pushed to Amazon ECR (Elastic Container Registry)
+TR4.10 Connection cleanup:
+	ECS service must properly close AWS Transcribe session on disconnect
+	Handle client disconnects gracefully (user closes tab, network loss)
+	Release resources immediately after connection closes
+
+TR5: Mock Response Handler (Frontend Only)
+
+TR5.1 Simulate processing delay (2-3 seconds total)
+TR5.2 Return hardcoded response acknowledging query
+TR5.3 Optional: Simple keyword matching for response variation
+TR5.4 No backend call required for POC
+
+TR6: Security (Simplified, Explicitly Non-Production)
+
+TR6.1 No user authentication (single-user POC)
+TR6.2 ECS task role used for Transcribe access
+TR6.3 No rate limiting or abuse prevention
+TR6.4 CORS configured for local development and CloudFront
+
+TR7: Performance Targets
+
+TR7.1 Partial transcription latency ≤500ms
+TR7.2 Final transcription delivered within 1 second of silence detection
+TR7.3 Mock response displayed within 3 seconds of clicking "Send"
+TR7.4 Support single concurrent user
+TR7.5 Max STT session duration ≤30 seconds
+
+TR8: Error Handling & Observability
+
+TR8.1 User-facing errors for:
+	Microphone access denied
+	WebSocket disconnect
+	Transcription failure
+	Transcription timeout (>30s or no response)
+	TR8.1.1 Recording hard stop at 30 seconds (timer shown to user)
+	TR8.1.2 Transcription response timeout: 5 seconds after audio stream ends
+TR8.2 All errors recoverable without page refresh
+TR8.3 Basic CloudWatch logs for ECS service (no custom metrics)
+
+TR9: Containerization & Deployment
+
+TR9.1 STT service packaged as Docker container
+TR9.2 Base image: Node.js (e.g., node:18-alpine)
+TR9.3 Container includes:
+	WebSocket server implementation
+	AWS SDK for Transcribe Streaming
+	Audio processing libraries
+TR9.4 Docker image stored in Amazon ECR
+TR9.5 ECS task definition references ECR image
+TR9.6 Container health checks configured for ECS
+
+Summary
+Category	Details
+Frontend	React, AWS S3+CloudFront, HTTPS
+Audio		AudioWorklet, PCM 16-bit/16kHz, ~100ms chunks
+STT Backend	ECS Fargate + Docker, ALB with WebSocket, AWS Transcribe Streaming
+Security	No auth (POC), env vars for keys, IAM roles
+Performance	<500ms STT latency
+Observability CloudWatch logs, no custom metrics

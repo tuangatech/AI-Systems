@@ -1,0 +1,137 @@
+Project Overview: Voice-Enabled Query Interface POC
+A proof-of-concept web application demonstrating production-quality voice input experience with real-time transcription streaming to incorporate into an existing Retrieval-Augmented Generation (RAG) system. The flow is Speech → Real-Time Transcription → User Confirmation → Query Submission. This POC validates a challenging technical component (audio streaming + STT) while deferring backend complexity. This POC aims to prove that voice input can feel as natural and reliable as typing, with immediate visual feedback.
+
+Success Criteria
+
+✅ User can speak a query and see real-time transcription
+✅ User can edit transcribed text before submission, ensuring user control
+✅ Reliable Error Handling when microphone fails, transcription errors, or connection drops
+
+Streaming UX and transcription smoothness are the focus.
+
+Demo-Ready Outcomes
+
+- User clicks mic → sees "Listening..." → speaks → sees words appear live → stops → edits if needed → clicks Send → sees response
+- Works reliably across 5 consecutive recordings without refresh
+- Partial transcripts visually distinct from final text
+- Auto-stop after 2s silence feels natural, not jarring
+
+=====
+Functional Requirements
+FR1: Voice Input Capture
+Objective: Capture live audio with explicit user control and predictable behavior.
+
+FR1.1 User starts recording via microphone button
+FR1.2 UI clearly indicates active recording (pulsing mic + "Listening…")
+FR1.3 Audio is captured continuously from the microphone
+FR1.4 User can manually stop recording
+FR1.5 Recording auto-stops after 2 seconds of continuous silence (client-side VAD)
+FR1.6 User can cancel recording:
+  - Click cancel button during recording
+  - Immediately stop audio capture and close WebSocket
+  - Clear input field (discard all partial/final transcripts)
+  - No confirmation dialog needed
+  - Ready for new recording
+FR1.7 Maximum recording duration: 30 seconds (hard stop with timer)
+  - Display elapsed time during recording (e.g., "0:15 / 0:30")
+  - At 30 seconds: Recording stops automatically, processes final transcript
+  - Show message: "Maximum recording time reached" (not an error)
+
+FR2: Real-Time Transcription
+Objective: Provide immediate, trustworthy feedback during speech.
+
+FR2.1 Partial transcription appears in near real time (≤500ms latency)
+FR2.2 Partial results are visually distinct (lighter color or italic text)
+FR2.3 Final transcription replaces partial text with stable formatting
+FR2.4 User can freely edit transcription before submission
+FR2.5 If no transcription is produced (empty result), display: "I didn't catch that. Please try again."
+  - This covers cases where AWS Transcribe returns empty transcript
+  - Timeout cases are handled by FR2.8 (shows partial with warning)
+FR2.6 Transcription updates must not block UI interaction
+FR2.7 Display model:
+  - Show only the latest partial transcript (updates replace previous)
+  - Partial text appears in lighter gray italic
+  - Final transcript replaces partial text with solid black normal font
+  - Transition is instant (no fade/animation needed for POC)
+FR2.8 Transcription timeout handling:
+  - After audio stops, wait up to 5 seconds for final transcript
+  - Show "Processing transcription..." during wait
+  - If timeout: Display last partial transcript (if any) with warning icon
+  - User can still edit and submit timed-out transcription
+  
+FR3: Input Method Flexibility
+Objective: Avoid locking users into voice-only interaction.
+
+FR3.1 User can switch from voice to text input at any time (keyboard ↔ microphone icons)
+FR3.2 Switching input modes immediately stops active recording:
+  - From voice → keyboard: Stop recording, keep any partial transcript in field
+  - From keyboard → voice: Clear typed text, start fresh recording
+  - WebSocket closes on mode switch
+  - User can edit partial transcript before submitting
+FR3.3 A single input field supports both typed and transcribed text
+FR3.4 Voice input never auto-submits a query
+
+FR4: Query Submission & Mock Response
+Objective: Complete the interaction loop with believable system behavior.
+
+FR4.1 User submits query via "Send" button
+FR4.2 Display staged progress indicators:
+	"Processing your query..." (2 seconds)
+	"Generating answer..." (1 second)
+FR4.3 Display hardcoded mock response that acknowledges the query
+FR4.4 Mock response variations with some generic helpful responses, like "Thank you for your query. In a production system, this would search our knowledge base for '[query text]'."
+FR4.5 User can submit another query without page refresh
+
+FR5: Error Recovery
+Objective: Handle failures gracefully without requiring page reload.
+
+FR5.1 Microphone permission denied → Show instructions + "Grant Permission" button
+FR5.2 WebSocket disconnect → Show "Connection lost" + "Retry" button
+FR5.3 Transcription timeout → Show "No response" + "Try Again" button
+FR5.4 Retry behavior:
+  - "Retry" button creates fresh WebSocket connection
+  - Does NOT automatically restart recording
+  - User must click microphone button to start new recording
+  - Previous partial transcripts are discarded
+  - Each retry is a completely fresh attempt
+
+====
+
+Voice Input Flow
+
+User clicks microphone button → recording starts with pulsing animation
+Audio streams to AWS Transcribe via WebSocket
+Transcribed text appears in real-time (partial results shown in lighter color)
+Recording stops automatically after 2 seconds of silence OR user clicks stop button
+User can edit transcribed text before submitting
+User clicks "Send" to submit query
+
+
+UI Features
+
+Microphone button with pulsing animation during recording
+Real-time transcription display (partial vs final results visually distinct)
+Text input field that supports both typing and voice transcription
+Toggle between voice and text input (microphone ↔ keyboard icons)
+Loading indicators: "Searching knowledge base..." → "Generating answer..."
+Error messages with "Try Again" option
+No authentication required (single-user POC)
+
+=====
+Out of Scope (For POC)
+
+User authentication and authorization
+Advanced reranking algorithms
+Multi-language support
+Conversation history/memory
+User management dashboard
+Production-grade error recovery and monitoring
+Comprehensive testing suite
+Text-to-speech (TTS) for responses
+Multi-turn conversations
+Document upload functionality
+Rate limiting and abuse prevention
+CloudWatch monitoring and alerts
+Performance optimization
+Multi-user support
+RAG service
