@@ -1,0 +1,114 @@
+Architecture Diagram (Textual)
+┌─────────────────────────────────────────────┐
+│           User Browser (React)              │
+│  ┌────────────────────────────────────────┐ │
+│  │ • Mic button + recording indicator     │ │
+│  │ • Real-time transcription display      │ │
+│  │ • Editable input field                 │ │
+│  │ • Send button → Mock response (3s)     │ │
+│  └────────────────────────────────────────┘ │
+└────────────────┬────────────────────────────┘
+                 │
+       WebSocket │ (Audio Stream)
+                 │
+                 ▼
+┌────────────────────────────────────────────┐
+│   Application Load Balancer (WebSocket)   │
+└────────────────┬───────────────────────────┘
+                 │
+                 ▼
+┌────────────────────────────────────────────┐
+│      ECS Fargate (STT Service)             │
+│  • WebSocket handler                       │
+│  • Audio buffering                         │
+│  • Stream to AWS Transcribe                │
+│  • Return partial/final transcripts        │
+└────────────────┬───────────────────────────┘
+                 │
+                 ▼
+┌────────────────────────────────────────────┐
+│      AWS Transcribe Streaming              │
+└────────────────────────────────────────────┘
+
+======
+
+Sequence diagrams
+
+1. Voice Capture & Real-Time Transcription (STT Streaming)
+Purpose: Show how live audio becomes partial + final text.
+
+```mermaid
+sequenceDiagram
+    participant U as User
+    participant B as Browser
+    participant A as ALB (WebSocket)
+    participant E as ECS STT Service
+    participant T as AWS Transcribe
+
+    U->>B: Click microphone
+    B->>A: Open WebSocket connection
+    A->>E: Forward WebSocket connection
+    E->>T: Start Transcribe streaming session
+
+    loop While user is speaking
+        U->>B: Speak
+        B->>A: Stream audio chunk (PCM 16-bit, mono, 16kHz, binary WebSocket frame)
+        A->>E: Forward audio chunk
+        E->>T: Send audio to Transcribe
+        T-->>E: Partial transcript
+        E-->>A: Send partial transcript
+        A-->>B: Forward partial transcript
+        B->>B: Display partial text
+    end
+
+    U->>B: Stop speaking (silence)
+    B->>B: Detect silence (VAD)
+    B->>A: Send {"type": "end_stream"}
+    A->>E: Forward end_stream signal
+    E->>T: End Transcribe stream
+    T-->>E: Final transcript
+    E-->>A: Send final transcript
+    A-->>B: Forward final transcript
+    B->>B: Display final text
+
+    B->>A: Close WebSocket connection
+    A->>E: Close WebSocket connection
+```
+
+Session Management:
+- One WebSocket per recording
+- ECS owns session state (not client)
+- Partial transcripts loop until silence
+- Final transcript ends stream cleanly
+
+
+### Voice Capture Architecture Overview
+
+User clicks Mic Button
+    ↓
+Request Microphone Permission
+    ↓
+Start Audio Capture (MediaStream)
+    ↓
+Process Audio in AudioWorklet (separate thread)
+    ↓
+Convert to PCM 16-bit, 16kHz, mono
+    ↓
+Send chunks to Main Thread
+    ↓
+Apply Voice Activity Detection (VAD)
+    ↓
+Stream to Backend via WebSocket
+    ↓
+Receive Transcripts
+    ↓
+Display in UI
+
+
+Voice Input Path (Streaming)
+Browser (AudioWorklet → PCM 16-bit, 16kHz, ~100ms chunks)
+  → WebSocket 
+    → ALB (WebSocket-enabled)
+      → ECS Fargate (STT Service)
+        → AWS Transcribe Streaming
+          → Partial/Final transcripts back via same WebSocket
