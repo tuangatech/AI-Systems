@@ -1,0 +1,134 @@
+/* src/components/QueryResponse.css */
+
+.query-response-container {
+    width: 100%;
+    max-width: 800px;
+    margin: 24px auto 0;
+}
+
+/* Processing indicator */
+.processing-indicator {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 20px;
+    background: #f8f9fa;
+    border: 1px solid #e0e0e0;
+    border-radius: 12px;
+    color: #666;
+}
+
+.spinner {
+    animation: spin 1s linear infinite;
+    color: #4a90e2;
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.processing-text {
+    font-size: 16px;
+    font-weight: 500;
+}
+
+/* Response content */
+.response-content {
+    background: white;
+    border: 2px solid #e0e0e0;
+    border-radius: 12px;
+    padding: 24px;
+    animation: fadeIn 0.3s ease-in;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.query-section,
+.response-section {
+    margin-bottom: 20px;
+}
+
+.section-label {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: #666;
+    margin-bottom: 8px;
+    letter-spacing: 0.5px;
+}
+
+.query-text {
+    font-size: 16px;
+    color: #333;
+    padding: 12px;
+    background: #f8f9fa;
+    border-left: 3px solid #4a90e2;
+    border-radius: 4px;
+    margin-bottom: 8px;
+}
+
+.timestamp {
+    font-size: 12px;
+    color: #999;
+    font-style: italic;
+}
+
+.response-text {
+    font-size: 16px;
+    line-height: 1.6;
+    color: #333;
+    padding: 16px;
+    background: #f0f7ff;
+    border-radius: 8px;
+}
+
+.poc-notice {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 12px;
+    background: #fff9e6;
+    border: 1px solid #ffe066;
+    border-radius: 8px;
+    font-size: 13px;
+    color: #856404;
+    margin-top: 16px;
+}
+
+.poc-notice svg {
+    flex-shrink: 0;
+    margin-top: 2px;
+    color: #ffc107;
+}
+
+/* Responsive adjustments */
+@media (max-width: 600px) {
+    .response-content {
+        padding: 16px;
+    }
+
+    .query-text,
+    .response-text {
+        font-size: 14px;
+    }
+
+    .section-label {
+        font-size: 11px;
+    }
+}

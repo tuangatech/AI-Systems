@@ -1,0 +1,127 @@
+/* src/components/TranscriptDisplay.css */
+
+.transcript-display {
+    width: 100%;
+    max-width: 800px;
+    margin: 20px auto;
+    padding: 20px;
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.transcript-label {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: #666;
+    margin-bottom: 12px;
+    letter-spacing: 0.5px;
+}
+
+.transcript-text {
+    font-size: 16px;
+    line-height: 1.6;
+    padding: 16px;
+    border-radius: 8px;
+    min-height: 50px;
+    transition: all 0.3s ease;
+}
+
+/* Partial transcript styling */
+.transcript-text.partial {
+    color: #999;
+    font-style: italic;
+    background: #f8f9fa;
+    border-left: 3px solid #ccc;
+}
+
+/* Final transcript styling */
+.transcript-text.final {
+    color: #333;
+    font-style: normal;
+    background: #f0f7ff;
+    border-left: 3px solid #4a90e2;
+}
+
+/* Empty transcript message */
+.transcript-empty {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 16px;
+    background: #fff9e6;
+    border: 1px solid #ffe066;
+    border-radius: 8px;
+    color: #856404;
+    font-size: 14px;
+}
+
+.transcript-empty svg {
+    flex-shrink: 0;
+    color: #ffc107;
+}
+
+/* Hint and warning messages */
+.transcript-hint,
+.transcript-warning {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 12px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+}
+
+.transcript-hint {
+    background: #e8f4fd;
+    color: #0066cc;
+}
+
+.transcript-hint svg {
+    color: #4a90e2;
+}
+
+.transcript-warning {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.transcript-warning svg {
+    color: #ffc107;
+}
+
+/* Animation for new transcripts */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.transcript-display {
+    animation: fadeIn 0.3s ease;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .transcript-display {
+        padding: 16px;
+        margin: 16px auto;
+    }
+
+    .transcript-text {
+        font-size: 14px;
+        padding: 12px;
+    }
+
+    .transcript-label {
+        font-size: 11px;
+    }
+}

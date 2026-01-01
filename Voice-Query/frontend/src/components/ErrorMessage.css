@@ -1,0 +1,131 @@
+/* src/components/ErrorMessage.css */
+
+.error-message {
+    width: 100%;
+    max-width: 800px;
+    margin: 20px auto;
+    padding: 20px;
+    background: #fff5f5;
+    border: 2px solid #fc8181;
+    border-radius: 12px;
+    animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.error-content {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+}
+
+.error-content svg {
+    flex-shrink: 0;
+    color: #e53e3e;
+    margin-top: 2px;
+}
+
+.error-text {
+    flex: 1;
+}
+
+.error-title {
+    font-weight: 700;
+    font-size: 16px;
+    color: #742a2a;
+    margin-bottom: 4px;
+}
+
+.error-description {
+    font-size: 14px;
+    color: #9b2c2c;
+    line-height: 1.5;
+}
+
+.error-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 16px;
+}
+
+.error-button {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.error-button.primary {
+    background: #e53e3e;
+    color: white;
+}
+
+.error-button.primary:hover {
+    background: #c53030;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(229, 62, 62, 0.3);
+}
+
+.error-button.secondary {
+    background: white;
+    color: #e53e3e;
+    border: 2px solid #e53e3e;
+}
+
+.error-button.secondary:hover {
+    background: #fff5f5;
+}
+
+.error-instructions {
+    margin-top: 16px;
+    padding: 16px;
+    background: white;
+    border-radius: 8px;
+    font-size: 14px;
+    color: #742a2a;
+}
+
+.error-instructions strong {
+    display: block;
+    margin-bottom: 8px;
+    color: #9b2c2c;
+}
+
+.error-instructions ol {
+    margin: 8px 0 0 20px;
+    padding: 0;
+}
+
+.error-instructions li {
+    margin: 4px 0;
+    line-height: 1.5;
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+    .error-message {
+        padding: 16px;
+        margin: 16px auto;
+    }
+
+    .error-actions {
+        flex-direction: column;
+    }
+
+    .error-button {
+        width: 100%;
+    }
+}
