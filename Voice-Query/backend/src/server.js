@@ -1,11 +1,18 @@
 /**
  * Main Server Entry Point
  * HTTP server with WebSocket upgrade support for STT streaming
+ * Updated with Query API endpoints for TTS responses
  */
 
 const http = require('http');
 const { WebSocketServer } = require('ws');
 const { handleConnection } = require('./websocket-handler');
+const {
+    handleQueryRequest,
+    handleTestRequest,
+    handleVoiceInfoRequest,
+    handleOptionsRequest
+} = require('./routes/query-routes');
 const { logger } = require('./utils/logger');
 
 // Server configuration
@@ -13,9 +20,14 @@ const PORT = parseInt(process.env.PORT || '8080', 10);
 const AWS_REGION = process.env.AWS_REGION || 'us-east-1';
 
 /**
- * Create HTTP server with health check endpoint
+ * Create HTTP server with health check and query (for TTS) endpoints
  */
 const server = http.createServer((req, res) => {
+    // Handle CORS preflight
+    if (req.method === 'OPTIONS') {
+        return handleOptionsRequest(req, res);
+    }
+
     // Health check endpoint for ALB target group
     if (req.url === '/health' && req.method === 'GET') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -28,15 +40,33 @@ const server = http.createServer((req, res) => {
         return;
     }
 
+    // Query endpoint - POST /query
+    if (req.url === '/query' && req.method === 'POST') {
+        return handleQueryRequest(req, res);
+    }
+
+    // Test endpoint - GET /query/test
+    if (req.url === '/query/test' && req.method === 'GET') {
+        return handleTestRequest(req, res);
+    }
+
+    // Voice info endpoint - GET /query/voice-info
+    if (req.url === '/query/voice-info' && req.method === 'GET') {
+        return handleVoiceInfoRequest(req, res);
+    }
+
     // Root endpoint - basic info
     if (req.url === '/' && req.method === 'GET') {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({
-            service: 'STT WebSocket Service',
-            version: '1.0.0',
+            service: 'STT WebSocket Service with TTS',
+            version: '1.1.0',
             status: 'running',
             endpoints: {
                 health: '/health',
+                query: 'POST /query',
+                test: '/query/test',
+                voiceInfo: '/query/voice-info',
                 websocket: 'ws://<host>:<port>/'
             }
         }));
