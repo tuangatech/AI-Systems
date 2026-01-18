@@ -1,11 +1,13 @@
 // src/components/VoiceInput.tsx
-// UPDATED VERSION with WebSocket integration
+// PHASE 2: Updated with conversation state machine and TTS integration
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { InputMode, RecordingState, TranscriptType } from '../types';
+import { InputMode, RecordingState, TranscriptType, ConversationState, BotResponse } from '../types';
 import { InputField } from './InputField';
 import { AudioVisualizer } from './AudioVisualizer';
 import { TranscriptDisplay } from './TranscriptDisplay';
+import { ResponseDisplay } from './ResponseDisplay';
+import { AudioPlayer } from './AudioPlayer';
 import { ErrorMessage } from './ErrorMessage';
 import { useVoiceRecording } from '../hooks/useVoiceRecording';
 import { useWebSocketTranscription } from '../hooks/useWebSocketTranscription';
@@ -28,11 +30,14 @@ export const VoiceInput: React.FC<VoiceInputProps> = ({
 }) => {
     const [inputMode, setInputMode] = useState<InputMode>('keyboard');
     const [recordingState, setRecordingState] = useState<RecordingState>('idle');
+    const [conversationState, setConversationState] = useState<ConversationState>('idle');
     const [hasTranscriptTimeout, setHasTranscriptTimeout] = useState(false);
     const [isTranscriptEmpty, setIsTranscriptEmpty] = useState(false);
     const [accumulatedTranscript, setAccumulatedTranscript] = useState<string>('');
-    const [showVisualizer, setShowVisualizer] = useState<boolean>(true); // NEW: Control visualizer visibility
-    
+    const [showVisualizer, setShowVisualizer] = useState<boolean>(true);
+    const [botResponse, setBotResponse] = useState<BotResponse | null>(null);
+    const [isAudioPlaying, setIsAudioPlaying] = useState(false);
+
     // Track previous transcript to detect new finals
     const prevTranscriptRef = useRef<{ text: string; type: TranscriptType | null }>({
         text: '',
@@ -45,7 +50,6 @@ export const VoiceInput: React.FC<VoiceInputProps> = ({
         disconnect: disconnectWS,
         sendAudio,
         sendEndSignal,
-        resetTranscript,  // NEW: Get reset function
         transcript,
         transcriptType,
         isConnected,
@@ -54,12 +58,11 @@ export const VoiceInput: React.FC<VoiceInputProps> = ({
 
     // Voice recording hook with audio chunk callback
     const handleAudioChunk = useCallback((chunk: { audioData: ArrayBuffer; rms: number; timestamp: number }) => {
-        console.log('🎵 Audio chunk received:', { 
-            size: chunk.audioData.byteLength, 
+        console.log('🎵 Audio chunk received:', {
+            size: chunk.audioData.byteLength,
             rms: chunk.rms.toFixed(4)
         });
-        
-        // Send audio to WebSocket (sendAudio checks connection state internally)
+
         sendAudio(chunk.audioData);
     }, [sendAudio]);
 
@@ -78,66 +81,175 @@ export const VoiceInput: React.FC<VoiceInputProps> = ({
     // Combine errors from recording and WebSocket
     const error = recordingError || wsError;
 
-    // Handle query submission - reset voice state
+    // Send query to backend
+    const sendQueryToBackend = useCallback(async (queryText: string) => {
+        if (!queryText.trim()) {
+            console.warn('Cannot send empty query');
+            return;
+        }
+
+        console.log('📤 Sending query to backend:', queryText);
+        setConversationState('bot_generating');
+
+        try {
+            const response = await fetch('http://localhost:8080/query', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ text: queryText }),
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const data: BotResponse = await response.json();
+
+            console.log('✅ Received bot response:', {
+                hasAudio: !!data.audio,
+                duration: data.duration,
+                textLength: data.text.length
+            });
+
+            setBotResponse(data);
+
+            // Transition to bot_speaking if audio is available
+            if (data.audio) {
+                setConversationState('bot_speaking');
+            } else {
+                // No audio, just show text and go back to idle
+                setConversationState('idle');
+            }
+
+        } catch (error) {
+            console.error('❌ Failed to send query:', error);
+            setConversationState('error');
+            setBotResponse({
+                success: false,
+                text: '',
+                audio: null,
+                duration: null,
+                error: error instanceof Error ? error.message : 'Failed to send query'
+            });
+        }
+    }, []);
+
+    // Handle query submission
     const handleSubmit = useCallback(() => {
-        // Call parent's onSubmit
-        onSubmit();
+        if (!value.trim()) {
+            console.warn('Cannot submit empty query');
+            return;
+        }
 
-        // Reset voice-related state
+        console.log('📨 Submitting query:', value);
+
+        // Send to backend
+        sendQueryToBackend(value);
+
+        // Don't call parent's onSubmit anymore since we're handling it
+        // onSubmit();
+    }, [value, sendQueryToBackend]);
+
+    // Handle audio playback completion
+    const handleAudioPlaybackEnd = useCallback(() => {
+        console.log('🔇 Audio playback ended');
+        setIsAudioPlaying(false);
+        setConversationState('idle');
+        
+        // Clear the response after audio finishes
+        setTimeout(() => {
+            setBotResponse(null);
+        }, 500);
+    }, []);
+
+    // Handle audio playback start
+    const handleAudioPlaybackStart = useCallback(() => {
+        console.log('🔊 Audio playback started');
+        setIsAudioPlaying(true);
+    }, []);
+
+    // Handle interruption (user clicks mic while bot is speaking)
+    const handleInterrupt = useCallback(() => {
+        console.log('🛑 User interrupted bot');
+
+        // Stop audio playback
+        setIsAudioPlaying(false);
+
+        // Clear bot response
+        setBotResponse(null);
+
+        // Clear input
+        onChange('');
         setAccumulatedTranscript('');
-        setRecordingState('idle');
-        setHasTranscriptTimeout(false);
-        setIsTranscriptEmpty(false);
-        setShowVisualizer(false);
-        
-        // Reset to keyboard mode after submit
-        setInputMode('keyboard');
-        
-        // Reset transcript ref
-        prevTranscriptRef.current = { text: '', type: null };
 
-        // Reset WebSocket transcript state
-        resetTranscript();
+        // Start new recording immediately
+        setConversationState('user_recording');
+        setInputMode('voice');
+        
+        // Start recording inline to avoid dependency issues
+        (async () => {
+            try {
+                setHasTranscriptTimeout(false);
+                setIsTranscriptEmpty(false);
+                setAccumulatedTranscript('');
+                setShowVisualizer(true);
 
-        console.log('✅ Query submitted, voice state reset, switched to keyboard mode');
-    }, [onSubmit, resetTranscript]);
+                console.log('🎤 Starting recording process...');
+                console.log('📡 Connecting WebSocket...');
+                await connectWS();
+
+                console.log('✅ WebSocket connected, starting audio capture...');
+                await startRecording();
+
+                console.log('✅ Recording started successfully');
+                setConversationState('user_recording');
+            } catch (error) {
+                console.error('❌ Failed to start recording:', error);
+                setRecordingState('error');
+                setConversationState('error');
+                disconnectWS();
+            }
+        })();
+    }, [onChange, connectWS, startRecording, disconnectWS]);
 
     // Auto-stop when VAD detects silence
     useEffect(() => {
         if (shouldAutoStop && isRecording) {
             console.log('🛑 Auto-stopping due to silence');
-            handleStopRecording();
+            stopRecording();
+            sendEndSignal();
+
+            setTimeout(() => {
+                disconnectWS();
+            }, 1000);
         }
-    }, [shouldAutoStop, isRecording]);
+    }, [shouldAutoStop, isRecording, stopRecording, sendEndSignal, disconnectWS]);
 
     // Update input value when transcript changes
     useEffect(() => {
-        // Check if this is a NEW final transcript (not the same one we already processed)
-        const isNewFinal = 
-            transcriptType === 'final' && 
+        const isNewFinal =
+            transcriptType === 'final' &&
             transcript &&
             (transcript !== prevTranscriptRef.current.text || transcriptType !== prevTranscriptRef.current.type);
 
         if (isNewFinal) {
-            // Append final transcript to accumulated text
-            const newAccumulated = accumulatedTranscript 
+            const newAccumulated = accumulatedTranscript
                 ? `${accumulatedTranscript} ${transcript}`
                 : transcript;
-            
+
             console.log('📝 Accumulating final transcript:', {
                 previous: accumulatedTranscript,
                 new: transcript,
                 accumulated: newAccumulated
             });
-            
+
             setAccumulatedTranscript(newAccumulated);
             onChange(newAccumulated);
-            
-            // Update ref to track this transcript as processed
+
             prevTranscriptRef.current = { text: transcript, type: transcriptType };
-        } 
+        }
         else if (transcriptType === 'partial' && transcript) {
-            // For partial transcripts, just update the ref but don't accumulate
             prevTranscriptRef.current = { text: transcript, type: transcriptType };
         }
     }, [transcript, transcriptType, accumulatedTranscript, onChange]);
@@ -146,10 +258,10 @@ export const VoiceInput: React.FC<VoiceInputProps> = ({
     useEffect(() => {
         if (isRecording) {
             setRecordingState('recording');
+            setConversationState('user_recording');
         } else if (recordingState === 'recording') {
             setRecordingState('processing');
 
-            // Set timeout for final transcript
             const timeoutId = setTimeout(() => {
                 if (!transcript) {
                     console.warn('⚠️ Transcription timeout - no transcript received');
@@ -163,11 +275,12 @@ export const VoiceInput: React.FC<VoiceInputProps> = ({
         }
     }, [isRecording, recordingState, transcript]);
 
-    // NEW: Set state back to idle when final transcript arrives
+    // Set state back to idle when final transcript arrives
     useEffect(() => {
         if (transcriptType === 'final' && recordingState === 'processing') {
             console.log('✅ Final transcript received, setting state to idle');
             setRecordingState('idle');
+            setConversationState('idle');
         }
     }, [transcriptType, recordingState]);
 
@@ -175,8 +288,6 @@ export const VoiceInput: React.FC<VoiceInputProps> = ({
     const handleInputChange = (newValue: string) => {
         onChange(newValue);
 
-        // If user starts typing while in voice mode (and not currently recording),
-        // automatically switch to keyboard mode
         if (inputMode === 'voice' && newValue.length > 0 && !isRecording) {
             setInputMode('keyboard');
         }
@@ -184,40 +295,34 @@ export const VoiceInput: React.FC<VoiceInputProps> = ({
 
     const handleStartRecording = async () => {
         try {
-            // Clear previous state
             setHasTranscriptTimeout(false);
             setIsTranscriptEmpty(false);
             setAccumulatedTranscript('');
-            setShowVisualizer(true); // NEW: Show visualizer when starting
+            setShowVisualizer(true);
 
             console.log('🎤 Starting recording process...');
 
-            // Connect WebSocket and wait for it to be ready
             console.log('📡 Connecting WebSocket...');
             await connectWS();
 
             console.log('✅ WebSocket connected, starting audio capture...');
-
-            // Start recording
             await startRecording();
 
             console.log('✅ Recording started successfully');
+            setConversationState('user_recording');
 
         } catch (error) {
             console.error('❌ Failed to start recording:', error);
             setRecordingState('error');
+            setConversationState('error');
             disconnectWS();
         }
     };
 
     const handleStopRecording = () => {
-        // Stop audio recording
         stopRecording();
-
-        // Send end signal to WebSocket
         sendEndSignal();
 
-        // Keep WebSocket open briefly to receive final transcript
         setTimeout(() => {
             disconnectWS();
         }, 1000);
@@ -227,23 +332,21 @@ export const VoiceInput: React.FC<VoiceInputProps> = ({
         stopRecording();
         disconnectWS();
         setRecordingState('idle');
-        setAccumulatedTranscript(''); // NEW: Clear accumulated
+        setConversationState('idle');
+        setAccumulatedTranscript('');
         onChange('');
     };
 
     const handleModeChange = (mode: InputMode) => {
-        // Stop recording if switching away from voice mode
         if (inputMode === 'voice' && isRecording) {
             handleCancelRecording();
         }
 
-        // Clear input when switching modes
         if (mode !== inputMode) {
             onChange('');
             setAccumulatedTranscript('');
         }
 
-        // Show visualizer when switching TO voice mode
         if (mode === 'voice') {
             setShowVisualizer(true);
         }
@@ -253,10 +356,15 @@ export const VoiceInput: React.FC<VoiceInputProps> = ({
 
     const handleRetry = () => {
         setRecordingState('idle');
+        setConversationState('idle');
         setHasTranscriptTimeout(false);
         setIsTranscriptEmpty(false);
         handleStartRecording();
     };
+
+    // Determine if input should be disabled
+    const isInputDisabled = conversationState === 'bot_speaking' || 
+                           conversationState === 'bot_generating';
 
     return (
         <div className="voice-input-container">
@@ -269,10 +377,10 @@ export const VoiceInput: React.FC<VoiceInputProps> = ({
                 />
             )}
 
-            {/* WebSocket connection status (for debugging) */}
+            {/* WebSocket connection status */}
             {inputMode === 'voice' && isRecording && (
-                <div style={{ 
-                    fontSize: '12px', 
+                <div style={{
+                    fontSize: '12px',
                     color: isConnected ? '#28a745' : '#dc3545',
                     marginBottom: '8px',
                     textAlign: 'center'
@@ -281,8 +389,34 @@ export const VoiceInput: React.FC<VoiceInputProps> = ({
                 </div>
             )}
 
+            {/* Bot response display */}
+            {botResponse && botResponse.success && (
+                <>
+                    <ResponseDisplay 
+                        response={botResponse}
+                        isPlaying={isAudioPlaying}
+                    />
+                    
+                    {/* Audio player */}
+                    {botResponse.audio && (
+                        <AudioPlayer
+                            audioData={botResponse.audio}
+                            autoPlay={true}
+                            playbackRate={1.25}
+                            onPlaybackStart={handleAudioPlaybackStart}
+                            onPlaybackEnd={handleAudioPlaybackEnd}
+                            onPlaybackError={(error) => {
+                                console.error('Audio playback error:', error);
+                                setIsAudioPlaying(false);
+                            }}
+                        />
+                    )}
+                </>
+            )}
+
             {/* Voice mode: Show audio visualizer */}
-            {inputMode === 'voice' && !error && showVisualizer && (
+            {inputMode === 'voice' && !error && showVisualizer && 
+             conversationState !== 'bot_speaking' && conversationState !== 'bot_generating' && (
                 <AudioVisualizer
                     recordingState={recordingState}
                     audioLevel={audioLevel}
@@ -294,33 +428,44 @@ export const VoiceInput: React.FC<VoiceInputProps> = ({
                 />
             )}
 
-            {/* Transcript display (only in voice mode) */}
-            {/* Shows CURRENT segment being transcribed (real-time feedback) */}
-            {inputMode === 'voice' && transcript && (
+            {/* Transcript display (only in voice mode, not during bot speaking) */}
+            {inputMode === 'voice' && transcript && 
+             conversationState !== 'bot_speaking' && conversationState !== 'bot_generating' && (
                 <TranscriptDisplay
-                    transcript={transcript}  // Just current segment
+                    transcript={transcript}
                     transcriptType={transcriptType}
                     hasTimeout={hasTranscriptTimeout}
                     isEmpty={isTranscriptEmpty}
                 />
             )}
 
-            {/* Input field (works in both modes) */}
-            {/* Shows ALL accumulated final transcripts (editable) */}
+            {/* Loading indicator during bot generation */}
+            {conversationState === 'bot_generating' && (
+                <div className="generating-indicator">
+                    <div className="spinner"></div>
+                    <span>Processing your query...</span>
+                </div>
+            )}
+
+            {/* Input field */}
             <InputField
-                value={value}  // Full accumulated text from parent
+                value={value}
                 onChange={handleInputChange}
-                onSubmit={handleSubmit}  // Use our wrapper that resets state
+                onSubmit={handleSubmit}
                 inputMode={inputMode}
                 onModeChange={handleModeChange}
-                isProcessing={isProcessing}
+                isProcessing={isInputDisabled}
                 isRecording={isRecording}
+                conversationState={conversationState}
+                onInterrupt={handleInterrupt}
                 placeholder={
-                    inputMode === 'keyboard'
-                        ? 'Type your query or switch to voice input...'
-                        : recordingState === 'idle' 
-                            ? 'Click the microphone to start recording...'
-                            : 'Recording in progress...'
+                    isInputDisabled
+                        ? 'Listening to AI Assistant...'
+                        : inputMode === 'keyboard'
+                            ? 'Type your query or switch to voice input...'
+                            : recordingState === 'idle'
+                                ? 'Click the microphone to start recording...'
+                                : 'Recording in progress...'
                 }
             />
 

@@ -36,6 +36,51 @@ export const useVoiceRecording = (
     const durationTimerRef = useRef<NodeJS.Timeout | null>(null);
 
     /**
+     * Cleanup all audio resources
+     */
+    const cleanup = useCallback(() => {
+        // Stop duration timer
+        if (durationTimerRef.current) {
+            clearInterval(durationTimerRef.current);
+            durationTimerRef.current = null;
+        }
+
+        // Disconnect audio nodes
+        if (workletNodeRef.current) {
+            workletNodeRef.current.port.onmessage = null;
+            workletNodeRef.current.disconnect();
+            workletNodeRef.current = null;
+        }
+
+        if (sourceNodeRef.current) {
+            sourceNodeRef.current.disconnect();
+            sourceNodeRef.current = null;
+        }
+
+        // Stop microphone stream
+        if (mediaStreamRef.current) {
+            mediaStreamRef.current.getTracks().forEach(track => track.stop());
+            mediaStreamRef.current = null;
+        }
+
+        // Close audio context
+        if (audioContextRef.current) {
+            audioContextRef.current.close();
+            audioContextRef.current = null;
+        }
+    }, []);
+
+    /**
+     * Stop recording and cleanup resources
+     */
+    const stopRecording = useCallback(() => {
+        cleanup();
+        setIsRecording(false);
+        setAudioLevel(0);
+        setRecordingDuration(0);
+    }, [cleanup]);
+
+    /**
      * Request microphone permission and start recording
      */
     const startRecording = useCallback(async () => {
@@ -77,7 +122,7 @@ export const useVoiceRecording = (
                 // Update audio level for visualization
                 setAudioLevel(rms);
 
-                // Send chunk to parent (for WebSocket transmission in Phase 3)
+                // Send chunk to parent (for WebSocket transmission)
                 if (onAudioChunk) {
                     onAudioChunk({ audioData, rms, timestamp });
                 }
@@ -118,52 +163,7 @@ export const useVoiceRecording = (
 
             cleanup();
         }
-    }, [onAudioChunk]);
-
-    /**
-     * Stop recording and cleanup resources
-     */
-    const stopRecording = useCallback(() => {
-        cleanup();
-        setIsRecording(false);
-        setAudioLevel(0);
-        setRecordingDuration(0);
-    }, []);
-
-    /**
-     * Cleanup all audio resources
-     */
-    const cleanup = useCallback(() => {
-        // Stop duration timer
-        if (durationTimerRef.current) {
-            clearInterval(durationTimerRef.current);
-            durationTimerRef.current = null;
-        }
-
-        // Disconnect audio nodes
-        if (workletNodeRef.current) {
-            workletNodeRef.current.port.onmessage = null;
-            workletNodeRef.current.disconnect();
-            workletNodeRef.current = null;
-        }
-
-        if (sourceNodeRef.current) {
-            sourceNodeRef.current.disconnect();
-            sourceNodeRef.current = null;
-        }
-
-        // Stop microphone stream
-        if (mediaStreamRef.current) {
-            mediaStreamRef.current.getTracks().forEach(track => track.stop());
-            mediaStreamRef.current = null;
-        }
-
-        // Close audio context
-        if (audioContextRef.current) {
-            audioContextRef.current.close();
-            audioContextRef.current = null;
-        }
-    }, []);
+    }, [onAudioChunk, stopRecording, cleanup]);
 
     return {
         startRecording,
