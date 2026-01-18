@@ -244,6 +244,22 @@ resource "aws_iam_role_policy" "transcribe_access" {
     }]
   })
 }
+ 
+# Policy for AWS Polly access (Text-to-Speech)
+resource "aws_iam_role_policy" "polly_access" {
+  name = "PollyAccess"
+  role = aws_iam_role.ecs_task_role.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Action = [
+        "polly:SynthesizeSpeech"
+      ]
+      Resource = "*"
+    }]
+  })
+}
 
 # ============================================================================
 # SECURITY GROUPS
